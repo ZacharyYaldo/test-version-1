@@ -80,16 +80,25 @@ button em { display: block; font: 700 13.5px var(--body); font-style: normal; co
 .chip button { padding: 1px 6px; font-size: 12px; box-shadow: none; display: flex; gap: 4px; align-items: center; }
 .chip button em { font-size: 12px; }
 
-/* media plays along the bottom of the street */
-#plays { position: absolute; left: 6px; bottom: 6px; right: 46px; display: flex; gap: 4px; }
-.play { position: relative; flex: 0 1 60px; min-width: 0; display: grid; justify-items: center; gap: 1px; padding: 3px 2px 2px; overflow: hidden; background: #120a1ee6; border-color: var(--pink); }
-.play img { width: 22px; height: 22px; }
-.play span { font-size: 9.5px; font-weight: 700; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.play i { position: absolute; left: 0; right: 0; bottom: 0; background: #000b; pointer-events: none; }
-.play b { position: absolute; inset: 0; display: grid; place-items: center; font: 700 15px var(--pixel); color: #fff; text-shadow: 1px 1px 0 #000; pointer-events: none; }
-.play.locked { border-color: var(--line); opacity: .5; }
-.play.locked img { filter: brightness(0) invert(.4); }
-.play:disabled { opacity: 1; }
+/* the Plays button in the corner of the street and its menu */
+#plays { position: absolute; inset: 6px; pointer-events: none; z-index: 3; }
+#plays > * { pointer-events: auto; }
+.pbtn { position: absolute; left: 0; bottom: 0; display: flex; gap: 6px; align-items: center; height: 34px; padding: 0 10px 0 6px; font-size: 14px; font-weight: 700; background: #120a1ee6; border-color: var(--pink); }
+.pbtn img { width: 22px; height: 22px; }
+.pbtn.on { background: var(--pink); color: #1a1029; }
+.pbtn .badge { top: -6px; right: -6px; width: auto; height: auto; min-width: 18px; padding: 0 3px; font: 700 11px/14px var(--body); font-style: normal; color: #1a1029; text-align: center; }
+.pmenu { position: absolute; left: 0; bottom: 42px; width: min(360px, 100%); max-height: calc(100% - 42px); overflow-y: auto; display: grid; gap: 4px; padding: 6px; background: #120a1ef2; border: 2px solid var(--pink); box-shadow: 4px 4px 0 #000a; }
+.prow { display: flex; gap: 8px; align-items: center; padding: 4px; border-bottom: 1px solid var(--line); }
+.prow:last-child { border-bottom: 0; }
+.prow > img { width: 28px; height: 28px; flex: none; }
+.prow > div { flex: 1; min-width: 0; }
+.prow b { font-size: 14px; }
+.prow p { font-size: 12px; line-height: 1.3; color: var(--dim); }
+.prow button { flex: none; min-width: 56px; padding: 6px 8px; font-size: 13px; background: var(--pink); color: #1a1029; border-color: #fff; }
+.prow button:disabled { background: var(--raise); color: var(--dim); border-color: var(--line); opacity: 1; }
+.prow small { flex: none; max-width: 80px; text-align: right; text-transform: none; letter-spacing: 0; }
+.prow.locked > img { filter: brightness(0) invert(.4); }
+.prow.locked b, .prow.locked p { opacity: .6; }
 .bb { display: flex; gap: 8px; padding: 6px 8px; background: #120a1ed9; border: 2px solid var(--line); }
 .bb .face { width: 44px; height: 56px; object-fit: cover; object-position: top; flex: none; background: #2f2148; border: 2px solid #000; }
 .bbmain { flex: 1; min-width: 0; display: grid; gap: 3px; }
@@ -225,6 +234,8 @@ const CFG = {
   tapCash: .04,               // and earns tapBase + tapCash x your glimmer per second
   weak: 3,                    // the front a target is weak to hits them this many times harder
   regen: .01,                 // a target wins back this share of their willpower every second
+  tire: .02,                  // ...2% less for every minute they have held out, so nobody is stuck for good
+  tireFloor: .25,             // ...but never less than a quarter of it
   reward: 30,                 // seconds of income paid out when a target is hooked
   reach: 140,                 // front levels (weighted by tier) it takes to hook about 63% of a town
   hookBonus: 1,               // a fully hooked town pays this much extra (1 = double)
@@ -255,7 +266,7 @@ const TIPS = {
   glamour: 'Sprinkle glamour over the town: suspicion drops to zero. Costs 15 seconds of income.',
   will: 'The target\'s willpower. Knock it to zero and they are hooked for good.',
   slop: 'How hard your fronts hit the target every second. The front they are weak to hits 3x harder. Tapping adds more.',
-  regen: 'Willpower the target wins back every second. Your slop has to beat this or they never break.',
+  regen: 'Willpower the target wins back every second. Your slop has to beat it to break them, but holdouts tire: the longer they resist, the less they win back.',
   dust: 'Fairy Dust stays when you start a town over or move on. Each one adds 10% to everything you make.',
   mode: 'How many levels one press of Buy gets you.',
   tap: 'Tap the street to throw slop. Each tap hits the target and earns glimmer.',
@@ -317,37 +328,37 @@ __m['js/data/bosses.js'] = (() => {
 // strike: what they do to fight back, about every `every` seconds: a line for the news and an effect or instant change
 // (fields as in data/events.js); counter is the cost, in seconds of income, to end their effect early.
 const BOSSES = [
-  { key: 'gym', title: 'Gym Bro', hp: 5300, weak: 'zap',
+  { key: 'gym', title: 'Gym Bro', hp: 9e4, weak: 'zap',
     strike: { every: 70, line: '{n} led a 5K right past the corner store. Nobody stopped for Doritos.', name: "{n}'s 5K", off: ['cart'], secs: 25, counter: 8 },
     intro: '{n} eats chicken and rice six times a day and calls cookies "poison".',
     taunts: ['{n}: "Do you even meal prep?"', '{n} just did 400 push-ups in front of the Doritos aisle.', '{n}: "My body is a temple. The temple does not take Red Bull."'],
     hooked: '{n} now pre-workouts with three Red Bulls and a 40-piece McNugget.' },
-  { key: 'gran', title: 'Grandma', hp: 4.3e5, weak: 'nugget',
+  { key: 'gran', title: 'Grandma', hp: 7.4e6, weak: 'nugget',
     strike: { every: 75, line: '{n} is hosting a potluck. Half the street is eating real food.', name: "{n}'s potluck", pay: .7, secs: 30, counter: 12 },
     intro: '{n} cooks everything from scratch and feeds half the street.',
     taunts: ['{n} is making soup from scratch again. The whole block can smell it.', '{n}: "In my day we grew our own tomatoes."', '{n} is handing out homemade cookies. Cart sales dip.'],
     hooked: '{n} has stopped cooking. Her famous soup is now a McDonald\'s combo.' },
-  { key: 'doc', title: 'Town Doctor', hp: 1.1e8, weak: 'cart',
+  { key: 'doc', title: 'Town Doctor', hp: 2.2e8, weak: 'cart',
     strike: { every: 75, line: '{n} ran a free health fair. Some people snapped out of it.', hookCut: .2 },
     intro: '{n} keeps telling everyone to eat vegetables and go for walks.',
     taunts: ['{n} hung a poster of broccoli in the waiting room.', '{n}: "Have you tried drinking water?"', '{n} prescribed a walk. Twelve people actually took it.'],
     hooked: '{n} now recommends two Red Bulls a day. "For energy."' },
-  { key: 'press', title: 'Reporter', hp: 2.6e9, weak: 'scroll', sus: 2,
+  { key: 'press', title: 'Reporter', hp: 2.9e9, weak: 'scroll', sus: 2,
     strike: { every: 70, line: '{n} published "Who Really Runs Netflix?". People are asking questions.', susUp: 18 },
     intro: '{n} is writing a story about who really runs the McDonald\'s on Main. Suspicion builds twice as fast while she digs.',
     taunts: ['{n} is asking why every new business in {t} opened the same week.', '{n} filed a story: "Who Picks Your TikTok Feed?"', '{n} photographed a fairy. Blurry, thankfully.'],
     hooked: '{n} dropped the story. She hosts a frying show on Netflix now.' },
-  { key: 'gary', title: 'The Neighbor', hp: 6.3e9, weak: 'tv', regen: 1.5,
+  { key: 'gary', title: 'The Neighbor', hp: 1.2e10, weak: 'tv', regen: 1.5,
     strike: { every: 65, line: '{n} rallied a protest outside McDonald\'s.', name: "{n}'s protest", off: ['nugget'], secs: 35, counter: 15 },
     intro: '{n} figured it out. It is fairies. He has a red-string board in his garage. Nobody believes him, but he recovers fast.',
     taunts: ['{n} covered his windows in foil. "They come at night," he says.', '{n}: "Wake up, people! It\'s FAIRIES!" Nobody looks up from TikTok.', '{n} added three more strings to his board.'],
     hooked: 'Nobody believed {n} anyway. He pays for everything with Klarna now.' },
-  { key: 'prin', title: 'Principal', hp: 4.1e10, weak: 'ads',
+  { key: 'prin', title: 'Principal', hp: 5.3e10, weak: 'ads',
     strike: { every: 70, line: '{n} took the whole school on a farm field trip.', name: 'Field trip', off: ['zap', 'scroll'], secs: 30, counter: 15 },
     intro: '{n} swapped every vending machine at the school for fruit.',
     taunts: ['{n} banned Red Bull from the cafeteria.', '{n}: "Recess is for running, not scrolling."', '{n} started a school garden. It is thriving.'],
     hooked: '{n} put Google Ads on the school website. The vending machines are back.' },
-  { key: 'mayor', title: 'Mayor', hp: 2.1e11, weak: 'bank',
+  { key: 'mayor', title: 'Mayor', hp: 3.3e11, weak: 'bank',
     strike: { every: 60, line: 'Mayor {n} passed a soda tax.', name: 'Soda tax', pay: .6, secs: 40, counter: 20 },
     intro: 'Mayor {n} is the last thing standing between the fairies and {t}.',
     taunts: ['Mayor {n} cut the ribbon on a farmers market.', 'Mayor {n} says he is "looking into" all the Klarna debt.', 'Mayor {n}: "This town runs on salad and civic pride."'],
@@ -408,12 +419,13 @@ function newGame(at = 0, dust = 0, life = { earned: 0, taps: 0, hooked: 0, towns
 
 // Fills fields added after a save was made, so older saves keep working.
 function upgrade(g) {
-  return Object.assign({ clock: 0, fx: [], fxId: 0, cd: {}, nextEvent: CFG.eventFirst, nextStrike: CFG.strikeGrace, lastEvent: '' }, g);
+  return Object.assign({ clock: 0, bossAt: 0, fx: [], fxId: 0, cd: {}, autoAcc: 0, nextEvent: CFG.eventFirst, nextStrike: CFG.strikeGrace, lastEvent: '' }, g);
 }
 
 // Effects running now, and their combined modifiers.
 const active = g => g.fx.filter(e => e.until > g.clock);
 const fxMult = (g, key) => g.fx.reduce((m, e) => e.until > g.clock && e[key] ? m * e[key] : m, 1);
+const fxSum = (g, key) => g.fx.reduce((n, e) => e.until > g.clock && e[key] ? n + e[key] : n, 0);
 const fxOff = (g, id) => g.fx.some(e => e.until > g.clock && e.off?.includes(id));
 
 const here = g => town(g.town);
@@ -443,7 +455,7 @@ function startOver(g, next) {
   return n;
 }
 
-return { newGame, upgrade, active, fxMult, fxOff, here, owns, townDone, boss, earn, dustFor, startOver };
+return { newGame, upgrade, active, fxMult, fxSum, fxOff, here, owns, townDone, boss, earn, dustFor, startOver };
 })();
 __m['js/sim/econ.js'] = (() => {
 // What everything costs and makes: fronts, schemes, and the multipliers between them.
@@ -542,7 +554,11 @@ const { FRONTS } = __m['js/data/fronts.js'];
 const { boss, earn } = __m['js/sim/state.js'];
 const { rates, tapMult } = __m['js/sim/econ.js'];
 
-const regen = g => { const b = boss(g); return b ? b.hp * CFG.regen * (b.regen ?? 1) : 0; };
+// Comeback per second, which shrinks the longer the holdout has resisted (g.bossAt: when they became the target).
+const regen = g => {
+  const b = boss(g), tired = Math.max(CFG.tireFloor, 1 - CFG.tire * (g.clock - g.bossAt) / 60);
+  return b ? b.hp * CFG.regen * (b.regen ?? 1) * tired : 0;
+};
 
 // Damage (or, if negative, recovery). Pushes 'hooked' and 'town' events to out.
 function hit(g, dmg, out) {
@@ -555,7 +571,7 @@ function hit(g, dmg, out) {
 function hook(g, b, out) {
   const prize = Math.max(50, rates(g).total * CFG.reward);
   earn(g, prize);
-  g.boss++; g.life.hooked++; g.nextStrike = g.clock + CFG.strikeGrace;
+  g.boss++; g.life.hooked++; g.bossAt = g.clock; g.nextStrike = g.clock + CFG.strikeGrace;
   out.push({ type: 'hooked', boss: b, prize, opens: FRONTS.filter(f => f.gate === g.boss) });
   const next = boss(g);
   g.hp = next ? next.hp : 0;
@@ -648,19 +664,24 @@ const EVENT = Object.fromEntries(EVENTS.map(e => [e.id, e]));
 return { EVENTS, EVENT };
 })();
 __m['js/data/plays.js'] = (() => {
-// Media plays: buttons on the street with a cooldown. tag: the short label on the button. needs: the front that must be running. cd: seconds before it can be used again.
-// fx is an effect (see data/events.js for the fields); sus adds suspicion when used.
+// Media plays, in the Plays menu on the street. needs: the front that must be running. cd: seconds before it can be used again.
+// icon: its own pixel icon in data/sprites.js. fx: an effect or instant change (fields in data/events.js), plus
+// auto (the fairies throw this many slops a second by themselves) and clear (ends every red effect). sus adds suspicion.
 const PLAYS = [
-  { id: 'samples', tag: 'Samples', name: 'Free Samples', needs: 'cart', cd: 60, fx: { name: 'Free Samples', pay: 2, secs: 15 },
-    blurb: 'Fairies hand out free Doritos and Red Bull on Main Street. Everything makes 2x for 15 seconds.' },
-  { id: 'trend', tag: 'Trend', name: 'Viral Trend', needs: 'scroll', cd: 120, fx: { name: 'Viral Trend', dps: 3, secs: 20 },
+  { id: 'samples', icon: 'gift', name: 'Free Samples', needs: 'cart', cd: 45, fx: { name: 'Free Samples', tap: 3, secs: 20, hookUp: .15 },
+    blurb: 'Fairies hand out free Doritos on Main Street. 15% more of the town gets hooked, and your taps hit 3x harder for 20 seconds.' },
+  { id: 'rush', icon: 'bolt', name: 'Fairy Rush', needs: 'zap', cd: 60, fx: { name: 'Fairy Rush', auto: 6, secs: 15 },
+    blurb: 'The fairies chug Red Bull and throw slop on their own: 6 throws a second for 15 seconds, no tapping needed.' },
+  { id: 'trend', icon: 'heart', name: 'Viral Trend', needs: 'scroll', cd: 120, fx: { name: 'Viral Trend', dps: 3, secs: 20 },
     blurb: 'Start a TikTok challenge aimed at the holdout. Your slop hits them 3x harder for 20 seconds.' },
-  { id: 'news', tag: 'News', name: 'Breaking News', needs: 'tv', cd: 180, sus: 10, fx: { name: 'Breaking News', pay: 2, secs: 30 },
+  { id: 'news', icon: 'mic', name: 'Breaking News', needs: 'tv', cd: 180, sus: 10, fx: { name: 'Breaking News', pay: 2, secs: 30 },
     blurb: 'Put a politician on the evening news saying slop is good for you. Everything makes 2x for 30 seconds, but suspicion goes up 10.' },
-  { id: 'rates', tag: 'Rate Cut', name: 'Rate Cut', needs: 'bank', cd: 240, fx: { name: 'Rate Cut', discount: .6, secs: 30 },
-    blurb: 'Klarna slashes rates. Fronts cost 40% less for 30 seconds.' },
-  { id: 'blitz', tag: 'Ad Blitz', name: 'Ad Blitz', needs: 'ads', cd: 240, fx: { name: 'Ad Blitz', pay: 1.5, secs: 45 },
-    blurb: 'Google Ads shows everyone in town HUNGRY? Income and slop 1.5x for 45 seconds.' },
+  { id: 'rates', icon: 'tag', name: 'Rate Cut', needs: 'bank', cd: 240, fx: { name: 'Rate Cut', discount: .6, secs: 30 },
+    blurb: 'Klarna slashes rates. Every front costs 40% less for 30 seconds. Buy big.' },
+  { id: 'cover', icon: 'doc', name: 'Cover-Up', needs: 'ads', cd: 240, fx: { susUp: -40, clear: true },
+    blurb: 'Bury every bad story under Google Ads. Suspicion drops 40, and every strike, protest and stunt against you ends now.' },
+  { id: 'subsidy', icon: 'sack', name: 'Slop Subsidy', needs: 'hall', cd: 300, fx: { cash: 60 },
+    blurb: 'City Hall passes an emergency snack subsidy. You get a minute of income right now.' },
 ];
 const PLAY = Object.fromEntries(PLAYS.map(p => [p.id, p]));
 
@@ -710,9 +731,10 @@ function apply(g, spec, good, n = '') {
   if (spec.secs) {
     const name = say(spec.name, n, here(g).name);
     g.fx = g.fx.filter(e => e.until > g.clock && e.name !== name);
-    const { susUp, hookUp, hookCut, cash, every, line, ...fx } = spec;
+    const { susUp, hookUp, hookCut, cash, clear, every, line, ...fx } = spec;
     g.fx.push({ ...fx, name, good, id: ++g.fxId, until: g.clock + spec.secs });
   }
+  if (spec.clear) g.fx = g.fx.filter(e => e.good || e.until <= g.clock);
   if (spec.susUp) g.sus = clamp(g.sus + spec.susUp, 0, 100);
   const pop = here(g).pop;
   if (spec.hookUp) g.hooked = Math.min(pop, g.hooked + spec.hookUp * pop);
@@ -774,9 +796,9 @@ return { costIn, apply, happen, optionOpen, choose, counter, playOpen, playWait,
 __m['js/sim/step.js'] = (() => {
 // The running clock: income, the fight, how hooked the town is, suspicion, and what happens to the town.
 const { CFG } = __m['js/config.js'];
-const { boss, here, earn, fxMult } = __m['js/sim/state.js'];
+const { boss, here, earn, fxMult, fxSum } = __m['js/sim/state.js'];
 const { rates, hookGoal, calm } = __m['js/sim/econ.js'];
-const { hit, regen } = __m['js/sim/fight.js'];
+const { hit, regen, tap } = __m['js/sim/fight.js'];
 const { happen } = __m['js/sim/events.js'];
 
 // Advance dt seconds. Pushes 'hooked', 'town', 'exposed', 'event' and 'strike' events to out.
@@ -786,6 +808,7 @@ function tick(g, dt, out) {
   const r = rates(g), b = boss(g);
   earn(g, r.total * dt);
   if (b) hit(g, (r.dps - regen(g)) * dt, out);
+  for (g.autoAcc += fxSum(g, 'auto') * dt; g.autoAcc >= 1; g.autoAcc--) tap(g, out, r);   // Fairy Rush: throws by themselves
   g.hooked += (hookGoal(g) - g.hooked) * Math.min(1, CFG.hookPace * dt);
   if (g.exposed > 0) { g.exposed = Math.max(0, g.exposed - dt); return; }
   g.sus += CFG.sus * (g.hooked / here(g).pop) * (b?.sus ?? 1) * calm(g) * fxMult(g, 'susRate') * dt;
@@ -853,7 +876,8 @@ const PANTS = ['#2f3a6b', '#3a2f2a', '#4a4a5a', '#2a4a3a'];
 const FAIRY = [['w.....w', 'ww.p.ww', 'wwgggww', '..ggg..', '...g...', '..g.g..'], ['.......', '...p...', 'wwgggww', 'ww.g.ww', 'w..g..w', '..g.g..']];
 const FAIRY_PAL = { w: '#c9f6ff', p: '#ffe3f5', g: '#ff7ac8' };
 
-// 8 x 8 icons: the fronts (plain pixel products, never the brands' logos), plus glimmer, the scheme pin and the target.
+// 8 x 8 icons: the fronts (plain pixel products, never the brands' logos), the media plays and the Plays button,
+// plus glimmer, the scheme pin and the target.
 const K = '#1a1423';
 const ICONS = {
   cart:   { pal: { k: '#5a2a1a', r: '#c03020', o: '#e8642a', y: '#f6c945' }, rows: ['.kkkkkk.', '.orrrro.', '.oooooo.', '.ooyooo.', '.oyyyoo.', '.yyyyyo.', '.oooooo.', '.kkkkkk.'] },
@@ -864,6 +888,14 @@ const ICONS = {
   bank:   { pal: { y: '#e8c547', k: '#1a1423', w: '#c8ccd4' }, rows: ['........', 'yyyyyyyy', 'kkkkkkkk', 'yyyyyyyy', 'ywwyyyyy', 'ywwyyyyy', 'yyyyyyyy', '........'] },
   ads:    { pal: { k: K, p: '#ef6fae', w: '#ffffff' }, rows: ['kkkkkkkk', 'kppppwpk', 'kpwwpppk', 'kppppppk', 'kkkkkkkk', '...kk...', '...kk...', '..kkkk..'] },
   hall:   { pal: { y: '#a9c1f5', w: '#ffffff', k: '#3a3f5c' }, rows: ['...yy...', '..yyyy..', '.yyyyyy.', 'kkkkkkkk', 'w.w..w.w', 'w.w..w.w', 'kkkkkkkk', '........'] },
+  gift:   { pal: { p: '#5cc8e8', r: '#ff4f6a' }, rows: ['..r..r..', '...rr...', 'ppprrppp', 'ppprrppp', '.pprrpp.', '.pprrpp.', '.pprrpp.', '.pprrpp.'] },
+  bolt:   { pal: { y: '#ffe14f' }, rows: ['....yy..', '...yy...', '..yy....', '.yyyyyy.', '....yy..', '...yy...', '..yy....', '.y......'] },
+  heart:  { pal: { r: '#ff4f8a', w: '#ffffff' }, rows: ['........', '.rr..rr.', 'rrrrrrrr', 'rrwrrrrr', 'rrrrrrrr', '.rrrrrr.', '..rrrr..', '...rr...'] },
+  mic:    { pal: { g: '#b8bcc8', w: '#5a5f6e', d: '#5a5f6e' }, rows: ['..gggg..', '.gwgwgg.', '.ggwgwg.', '.gwgwgg.', '..gggg..', '...dd...', '...dd...', '..dddd..'] },
+  tag:    { pal: { k: '#7cff6b' }, rows: ['kk....k.', 'kk...k..', '....k...', '...k....', '..k.....', '.k...kk.', 'k....kk.', '........'] },
+  doc:    { pal: { w: '#f4f0e0', k: '#1a1423' }, rows: ['.wwwww..', '.wkkkww.', '.wwwwww.', '.wkkkkw.', '.wwwwww.', '.wkkwww.', '.wwwwww.', '........'] },
+  sack:   { pal: { k: '#8a5a2a', y: '#d8b060', g: '#3a7a2a' }, rows: ['...kk...', '..kyyk..', '...yy...', '..yyyy..', '.yyggyy.', '.ygyyyy.', '.yyggyy.', '..yyyy..'] },
+  horn:   { pal: { k: '#c8ccd4', p: '#ff7ac8', w: '#ffffff' }, rows: ['......w.', '....wpw.', 'kkppppw.', 'kkppppw.', 'kkppppw.', '.k..wpw.', '.k....w.', '........'] },
   glimmer:{ pal: { y: '#ffd45e', w: '#ffffff' }, rows: ['...y....', '...y....', '..yyy...', 'yyywyyy.', '..yyy...', '...y....', '...y....', '........'] },
   pin:    { pal: { r: '#e04050', w: '#ff9aa6', k: '#6a6470' }, rows: ['..rrr...', '.rwrrr..', '.rrrrr..', '..rrr...', '...k....', '...k....', '...k....', '........'] },
   target: { pal: { r: '#e04050', w: '#fff4e0' }, rows: ['..rrrr..', '.rwwwwr.', 'rwrrrrwr', 'rwrwwrwr', 'rwrwwrwr', 'rwrrrrwr', '.rwwwwr.', '..rrrr..'] },
@@ -1059,12 +1091,12 @@ function createScene(canvas) {
     if (sparks.length > 300) sparks.splice(0, sparks.length - 300);
   }
 
-  // view: { pop, dps } from the screen, so the scene can show how hooked the town is and how often the fairies throw.
+  // view: { pop, dps, rush } from the screen, so the scene can show how hooked the town is and how often the fairies throw.
   function draw(g, view, now, dt) {
     resize();
     flash = Math.max(0, flash - dt); cool -= dt;
     sky(now); street(g); people({ ...g, pop: view.pop }, now, dt); boss(g, now, dt); fairies(g, now); flying(dt);
-    if (view.dps > 0 && BOSSES[g.boss] && (auto += dt) > Math.max(.3, 1.6 - fairyCount(g) * .09)) { auto = 0; shoot(g, now); }
+    if (view.dps > 0 && BOSSES[g.boss] && (auto += dt) > (view.rush ? .12 : Math.max(.3, 1.6 - fairyCount(g) * .09))) { auto = 0; shoot(g, now); }
     if (g.exposed > 0) { ctx.fillStyle = Math.floor(now / 300) % 2 ? '#ff283c2a' : '#2850ff2a'; ctx.fillRect(0, 0, W, H); }
   }
 
@@ -1261,13 +1293,14 @@ function describe(e) {
     e.susUp > 0 && `suspicion +${e.susUp}`, e.susUp < 0 && `suspicion -${-e.susUp}`, e.hookUp && `+${e.hookUp * 100}% of town hooked`, e.hookCut && `-${e.hookCut * 100}% hooked`]
     .filter(Boolean).join(', ');
 }
-const spell = e => `${e.secs ? `${e.name}: ` : ''}${describe(e)}${e.secs ? ` for ${e.secs}s` : ''}`;
+const spell = e => { const t = `${e.secs ? `${e.name}: ` : ''}${describe(e)}${e.secs ? ` for ${e.secs}s` : ''}`; return t[0].toUpperCase() + t.slice(1); };
 
-// The media plays along the bottom of the street.
-const playsKey = g => PLAYS.map(p => +playOpen(g, p)).join('');
-const plays = g => PLAYS.map(p => playOpen(g, p)
-  ? `<button class="play" data-go="play:${p.id}" data-off="poff:${p.id}" data-tip="${p.name}: ${esc(p.blurb)}"><img src="${iconURL(p.needs)}" alt=""><span>${p.tag}</span><i data-h="pcd:${p.id}"></i><b data-live="pt:${p.id}"></b></button>`
-  : `<button class="play locked" data-tip="${p.name} opens once ${FRONT[p.needs].name} is running. ${esc(p.blurb)}"><img src="${iconURL(p.needs)}" alt=""><span>???</span></button>`).join('');
+// The Plays button in the corner of the street, and the menu it opens: every play with its description.
+const playsKey = (g, open) => `${open}:${PLAYS.map(p => +playOpen(g, p)).join('')}`;
+const plays = (g, open) => `<button class="pbtn${open ? ' on' : ''}" data-go="menu" aria-label="Media plays"><img src="${iconURL('horn')}" alt=""><span>Plays</span><i class="badge" data-on="pready" data-live="pcount"></i></button>`
+  + (open ? `<div class="pmenu">${PLAYS.map(p => `<div class="prow${playOpen(g, p) ? '' : ' locked'}"><img src="${iconURL(p.icon)}" alt="">
+    <div><b>${p.name}</b><p>${esc(p.blurb)}</p></div>${playOpen(g, p)
+      ? `<button data-go="play:${p.id}" data-off="poff:${p.id}" data-live="pt:${p.id}"></button>` : `<small>Opens with ${FRONT[p.needs].name}</small>`}</div>`).join('')}</div>` : '');
 
 // Effects running now, under the holdout's card: green for the fairies' own, red for trouble (some can be ended early).
 const fxKey = g => active(g).map(e => e.id).join();
@@ -1395,7 +1428,12 @@ function values(g, r, mode, m) {
     const off = owns(g, s.id) || !schemeReady(g, s) || g.glimmer < schemeCost(g, s);
     v[`s:${s.id}`] = off; ready ||= !off;
   }
-  for (const p of PLAYS) { const w = playWait(g, p); Object.assign(v, { [`poff:${p.id}`]: w > 0 || !playOpen(g, p), [`pt:${p.id}`]: w > 0 ? Math.ceil(w) : '', [`pcd:${p.id}`]: w / p.cd * 100 }); }
+  let armed = 0;
+  for (const p of PLAYS) {
+    const w = playWait(g, p), on = playOpen(g, p) && w <= 0;
+    armed += on; Object.assign(v, { [`poff:${p.id}`]: !on, [`pt:${p.id}`]: w > 0 ? `${Math.ceil(w)}s` : 'Run' });
+  }
+  Object.assign(v, { pready: armed > 0, pcount: armed || '' });
   for (const e of active(g)) {
     const c = e.counter && costIn(g, e.counter);
     Object.assign(v, { [`fx:${e.id}`]: `${Math.ceil(e.until - g.clock)}s`, [`fc:${e.id}`]: c ? G(c) : '', [`foff:${e.id}`]: g.glimmer < c });
@@ -1468,7 +1506,7 @@ __m['js/main.js'] = (() => {
 // Wires the simulation to the screen: the game loop, taps and buttons, pop-ups, and saving.
 const { CFG, VERSION } = __m['js/config.js'];
 const { SCHEMES } = __m['js/data/schemes.js'];
-const { newGame, startOver, here, upgrade } = __m['js/sim/state.js'];
+const { newGame, startOver, here, upgrade, fxSum } = __m['js/sim/state.js'];
 const { rates, buy, buyScheme } = __m['js/sim/econ.js'];
 const { tap } = __m['js/sim/fight.js'];
 const { tick, away, glamour } = __m['js/sim/step.js'];
@@ -1491,7 +1529,7 @@ const store = {
   erase() { try { localStorage.removeItem(SAVE); } catch { /* nothing to erase */ } },
 };
 
-const G = { g: store.load() ?? newGame(), tab: 'fronts', mode: 1, queue: [], keys: {}, last: 0, ui: 0, saved: 0, news: 0 };
+const G = { g: store.load() ?? newGame(), tab: 'fronts', mode: 1, menu: false, queue: [], keys: {}, last: 0, ui: 0, saved: 0, news: 0 };
 const scene = createScene($('scene')), music = createMusic(['song1', 'song2']);
 
 // Credit the time the game was closed or hidden, and say so if it was long enough to matter.
@@ -1528,7 +1566,7 @@ function refresh() {
   put('tabs', 'tabs', tabs());
   put('boss', `${g.town}:${g.boss}`, bossBar(g));
   put('fx', fxKey(g), chips(g));
-  put('plays', playsKey(g), plays(g));
+  put('plays', playsKey(g, G.menu), plays(g, G.menu));
   const scroll = $('panel').scrollTop;
   if (put('panel', panelKey(g, G.tab, G.mode), panel(g, G.tab, G.mode))) {
     $('panel').scrollTop = scroll;
@@ -1548,7 +1586,8 @@ function act(go) {
   else if (verb === 'buy') buy(g, arg, G.mode);
   else if (verb === 'scheme') buyScheme(g, arg);
   else if (verb === 'music') music.toggle();
-  else if (verb === 'play') { if (play(g, arg)) news(`${PLAY[arg].name}! ${PLAY[arg].blurb}`); }
+  else if (verb === 'menu') G.menu = !G.menu;
+  else if (verb === 'play') { if (play(g, arg)) { G.menu = false; news(`${PLAY[arg].name}! ${PLAY[arg].blurb}`); } }
   else if (verb === 'counter') counter(g, +arg);
   else if (verb === 'pick') { const then = G.queue[0]?.kind === 'event' && choose(g, G.queue[0].id, +arg); if (then) { G.queue.shift(); news(then); } }
   else if (verb === 'glamour') { if (glamour(g)) news('The fairies sprinkle glamour over town. Nobody remembers a thing.'); }
@@ -1579,6 +1618,7 @@ function float(x, y, text, cls) {
 $('scene').addEventListener('pointerdown', e => {
   e.preventDefault();
   if (G.queue.length) return;
+  if (G.menu) { G.menu = false; refresh(); }
   const out = [], hit = tap(G.g, out), box = $('stage').getBoundingClientRect(), x = e.clientX - box.left, y = e.clientY - box.top;
   scene.shoot(G.g, performance.now(), scene.local(e));
   if (hit.dmg) float(x, y - 10, `-${fmt(hit.dmg)}`, 'dmg');
@@ -1592,7 +1632,7 @@ function frame(now) {
   tick(G.g, dt, out);
   handle(out);
   music.tick();
-  scene.draw(G.g, { pop: here(G.g).pop, dps: rates(G.g).dps }, now, dt);
+  scene.draw(G.g, { pop: here(G.g).pop, dps: rates(G.g).dps, rush: fxSum(G.g, 'auto') > 0 }, now, dt);
   if (now - G.ui > 200) { G.ui = now; refresh(); }
   if (now - G.news > 8000) news(chatter(G.g));
   if (now - G.saved > CFG.saveEvery * 1000) { G.saved = now; store.save(G.g); }
@@ -1610,7 +1650,7 @@ initTips();
 refresh();
 requestAnimationFrame(frame);
 // Test handle for build/shot.py.
-window.slop = { G, tick, handle, refresh, act, music, schemes: SCHEMES.map(s => s.id) };
+window.slop = { G, tick, handle, refresh, act, music, schemes: SCHEMES.map(s => s.id), plays: Object.keys(PLAY) };
 
 return {  };
 })();
