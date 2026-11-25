@@ -1468,7 +1468,7 @@ __m['js/main.js'] = (() => {
 // Wires the simulation to the screen: the game loop, taps and buttons, pop-ups, and saving.
 const { CFG, VERSION } = __m['js/config.js'];
 const { SCHEMES } = __m['js/data/schemes.js'];
-const { newGame, startOver, here } = __m['js/sim/state.js'];
+const { newGame, startOver, here, upgrade } = __m['js/sim/state.js'];
 const { rates, buy, buyScheme } = __m['js/sim/econ.js'];
 const { tap } = __m['js/sim/fight.js'];
 const { tick, away, glamour } = __m['js/sim/step.js'];
@@ -1486,7 +1486,7 @@ const { hud, tabs, bossBar, panel, panelKey, stringUp, values, live, chatter, mo
 const SAVE = 'slop.save';
 // The game saves itself to the browser: every few seconds, after every button, and when the page is hidden.
 const store = {
-  load() { try { const g = JSON.parse(localStorage.getItem(SAVE)); return g?.v === VERSION ? g : null; } catch { return null; } },
+  load() { try { const g = JSON.parse(localStorage.getItem(SAVE)); return g?.v === VERSION ? upgrade(g) : null; } catch { return null; } },
   save(g) { try { g.t = Date.now(); localStorage.setItem(SAVE, JSON.stringify(g)); } catch { /* storage blocked: this visit only */ } },
   erase() { try { localStorage.removeItem(SAVE); } catch { /* nothing to erase */ } },
 };
