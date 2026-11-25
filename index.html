@@ -972,6 +972,7 @@ __m['js/ui/scene.js'] = (() => {
 const { FRONTS } = __m['js/data/fronts.js'];
 const { BOSSES } = __m['js/data/bosses.js'];
 const { isOpen } = __m['js/sim/econ.js'];
+const { active } = __m['js/sim/state.js'];
 const { bossArt, flashArt, iconArt, fairyArt, walkerArt, buildingArt } = __m['js/ui/art.js'];
 
 const LW = 192;   // the street is always 192 pixels wide; its height follows the screen
@@ -981,7 +982,7 @@ const SPARK = ['#ffffff', '#ffe3f5', '#ff7ac8', '#c9f6ff', '#ffd45e'];
 function createScene(canvas) {
   const ctx = canvas.getContext('2d'), rnd = Math.random;
   const stars = Array.from({ length: 46 }, () => [rnd(), rnd() * .7, rnd() * 6]);
-  const walkers = Array.from({ length: 9 }, (_, i) => ({ x: rnd() * LW, v: (rnd() < .5 ? -1 : 1) * (5 + rnd() * 7), look: i, lane: i % 3, beat: rnd() * 6 }));
+  const walkers = Array.from({ length: 9 }, (_, i) => ({ x: rnd() * LW, v: (rnd() < .5 ? -1 : 1) * (5 + rnd() * 7), look: i, lane: i % 3, beat: rnd() * 6, mode: 'walk', t: rnd() * 5, home: 0 }));
   let W = LW, H = 160, ground = 136, shots = [], sparks = [], flash = 0, cool = 0, shown = null, leaving = null, enter = 1, auto = 0;
 
   function resize() {
@@ -1030,17 +1031,66 @@ function createScene(canvas) {
     ctx.fillStyle = '#e8d070'; for (let x = 4; x < W; x += 16) ctx.fillRect(x, ground + 16, 7, 1);
   }
 
+  // What each person is doing: mostly walking, now and then stopping to scroll, snack, chat or (if hooked) dance.
+  // The town's mood overrides that: a strike draws a picket line outside the closed front, Free Samples draws a crowd,
+  // an exposé sends everyone running, and a hooked holdout gets a cheer (see boss()).
+  const act = (p, mode, secs) => { p.mode = mode; p.t = secs; };
+  function decide(p, g, dazed) {
+    const fx = active(g), strike = fx.find(e => !e.good && e.off), samples = fx.some(e => e.name === 'Free Samples'), r = rnd();
+    if (g.exposed > 0) return act(p, 'panic', 2 + rnd() * 2);
+    if (strike && r < .65) { p.home = 12 + FRONTS.findIndex(f => f.id === strike.off[0]) * 24 + (rnd() - .5) * 16; return act(p, 'picket', 4 + rnd() * 4); }
+    if (samples && r < .65) { p.home = W / 2 + (rnd() - .5) * 50; return act(p, 'crowd', 3 + rnd() * 2); }
+    if (r < .45) return act(p, 'walk', 3 + rnd() * 6);
+    if (r < .6 && g.lv.scroll > 0) return act(p, 'phone', 2 + rnd() * 3);
+    if (r < .74 && (dazed || g.lv.nugget > 0 || g.lv.zap > 0)) return act(p, 'snack', 2 + rnd() * 2);
+    if (r < .86) return act(p, 'chat', 2 + rnd() * 2);
+    act(p, dazed ? 'dance' : 'walk', 2 + rnd() * 3);
+  }
+
+  // Moves a person for this frame; returns whether they are walking (for the step animation).
+  function move(p, dazed, dt, now) {
+    const toward = (x, speed) => {
+      const d = x - p.x;
+      if (Math.abs(d) < 1.5) return false;
+      p.v = Math.sign(d) * Math.abs(p.v); p.x += Math.sign(d) * Math.min(Math.abs(d), speed * dt);
+      return true;
+    };
+    if (p.mode === 'walk') { p.x += p.v * (dazed ? .55 : 1) * dt; return true; }
+    if (p.mode === 'panic') { p.x += Math.sign(p.v) * 34 * dt; return true; }
+    if (p.mode === 'picket') return toward(p.home + Math.sin(now / 900 + p.beat) * 7, 10);
+    if (p.mode === 'crowd') return toward(p.home, 16);
+    return false;
+  }
+
+  const px = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), w, h); };
+  // The little extras: a phone, a snack, a speech bubble, a picket sign, a panic mark, confetti, a heart.
+  function props(p, x, y, face, dazed, now) {
+    const hand = face > 0 ? x + 6 : x, tick = Math.floor(now / 350 + p.beat) % 2;
+    if (p.mode === 'phone') { px(hand, y + 7, 1, 2, '#5fe8ff'); px(hand, y + 6, 1, 1, '#1a1423'); }
+    if (p.mode === 'snack') p.look % 2 ? (px(hand - 1, y + 6, 3, 1, '#d8902e'), px(hand - 1, y + 7, 3, 1, '#5a2e1a')) : px(hand, y + 6, 1, 3, '#3a5fb8');
+    if (p.mode === 'chat') { px(x + 4, y - 6, 7, 4, '#ffffff'); px(x + 4, y - 2, 1, 1, '#ffffff'); for (let d = 0; d < 3; d++) px(x + 5 + d * 2, y - 5 + (tick && d === 1 ? 1 : 0), 1, 1, '#1a1423'); }
+    if (p.mode === 'picket') { const lift = tick; px(hand, y - 6 - lift, 1, 14, '#8a6a4a'); px(hand - 3, y - 12 - lift, 7, 6, '#f4f0e0'); px(hand - 2, y - 10 - lift, 5, 1, '#e04050'); px(hand - 2, y - 8 - lift, 3, 1, '#e04050'); }
+    if (p.mode === 'panic') { px(x + 3, y - 8, 1, 3, '#ff4f4f'); px(x + 3, y - 4, 1, 1, '#ff4f4f'); }
+    if (p.mode === 'cheer' && tick) { px(x + 1, y - 3, 1, 1, '#ffd45e'); px(x + 5, y - 5, 1, 1, '#ff7ac8'); px(x + 3, y - 6, 1, 1, '#7cff6b'); }
+    if (dazed && p.mode === 'walk' && (now / 1000 + p.beat) % 6 < 1.2) { px(x + 2, y - 4, 1, 1, '#ff7ac8'); px(x + 4, y - 4, 1, 1, '#ff7ac8'); px(x + 3, y - 3, 1, 1, '#ff7ac8'); }
+  }
+
   function people(g, now, dt) {
     const hooked = Math.round(walkers.length * g.hooked / Math.max(1, g.pop ?? 1));
     walkers.forEach((p, i) => {
-      const dazed = i < hooked, speed = dazed ? .55 : 1;
-      p.x += p.v * speed * dt;
+      const dazed = i < hooked;
+      const striking = p.mode === 'picket' && !active(g).some(e => !e.good && e.off);
+      if ((p.t -= dt) <= 0 || (g.exposed > 0) !== (p.mode === 'panic') || striking) decide(p, g, dazed);   // react to news at once
+      const moving = move(p, dazed, dt, now);
       if (p.x < -10) p.x = W + 8; else if (p.x > W + 10) p.x = -8;
-      const art = walkerArt(p.look, Math.floor(now / (dazed ? 320 : 200) + i) % 2, dazed), y = ground + 6 + p.lane * 2 - art.height;
-      ctx.save(); ctx.translate(Math.round(p.x), y);
-      if (p.v < 0) { ctx.scale(-1, 1); ctx.translate(-art.width, 0); }
+      const face = p.mode === 'dance' ? (Math.floor(now / 300 + i) % 2 ? 1 : -1) : Math.sign(p.v) || 1;
+      const hop = p.mode === 'cheer' ? (Math.floor(now / 150 + i) % 2) * 2 : p.mode === 'dance' ? Math.floor(now / 200) % 2 : 0;
+      const art = walkerArt(p.look, moving ? Math.floor(now / (dazed || p.mode === 'picket' ? 320 : p.mode === 'panic' ? 100 : 200) + i) % 2 : 0, dazed);
+      const x = Math.round(p.x), y = ground + 6 + p.lane * 2 - art.height - hop;
+      ctx.save(); ctx.translate(x, y);
+      if (face < 0) { ctx.scale(-1, 1); ctx.translate(-art.width, 0); }
       ctx.drawImage(art, 0, 0); ctx.restore();
-      if (dazed && (now / 1000 + p.beat) % 6 < 1.2) { ctx.fillStyle = '#ff7ac8'; ctx.fillRect(Math.round(p.x) + 2, y - 4, 1, 1); ctx.fillRect(Math.round(p.x) + 4, y - 4, 1, 1); ctx.fillRect(Math.round(p.x) + 3, y - 3, 1, 1); }
+      props(p, x, y, face, dazed, now);
     });
   }
 
@@ -1048,7 +1098,7 @@ function createScene(canvas) {
   function boss(g, now, dt) {
     const key = `${g.town}:${g.boss}`;
     if (shown !== key) {
-      if (shown && BOSSES[+shown.split(':')[1]]) leaving = { key: BOSSES[+shown.split(':')[1]].key, t: 0 };
+      if (shown && BOSSES[+shown.split(':')[1]]) { leaving = { key: BOSSES[+shown.split(':')[1]].key, t: 0 }; walkers.forEach(p => act(p, 'cheer', 5)); }
       shown = key; enter = leaving ? 0 : 1;
     }
     const home = W / 2 - 12, top = ground + 6 - 48;
