@@ -1,0 +1,2324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Slop Run</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* One town at dusk: night-purple frame, cream arcade plastic, green for "go", red string for the wall. */
+  --night: #1b1030;
+  --panel: #2b1b4d;
+  --cream: #f6ecc9;
+  --cream-edge: #b8a877;
+  --ink: #2a1a3a;
+  --go: #7dff6b;
+  --warn: #ffb000;
+  --bad: #ff4d5e;
+  --display: "Press Start 2P", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --body: "VT323", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--night); color: var(--cream); font-family: var(--body);
+  overscroll-behavior: none; touch-action: manipulation;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+}
+#app {
+  height: 100%; max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px;
+  padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+/* HUD */
+#hud { display: flex; gap: 8px; align-items: stretch; }
+.pill {
+  background: var(--panel); border: 2px solid var(--cream); border-radius: 8px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 6px; justify-content: center; min-width: 0;
+}
+.pill.slop { flex: 1.5; }
+.pill.home { flex: 1; align-items: flex-start; }
+.pill .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.pill.home .row { flex-direction: column; gap: 6px; }
+.pill .k { font-family: var(--display); font-size: 8px; letter-spacing: 0.5px; opacity: 0.8; }
+.pill .v { font-family: var(--display); font-size: 12px; font-variant-numeric: tabular-nums; }
+.bar { height: 8px; background: var(--night); border-radius: 2px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--go); }
+.bar i.warm { background: var(--warn); }
+.bar i.hot { background: var(--bad); }
+
+/* Buttons */
+.btn {
+  font-family: var(--display); color: var(--ink); background: var(--cream);
+  border: 3px solid var(--ink); border-radius: 12px; box-shadow: 0 4px 0 var(--cream-edge);
+  cursor: pointer; padding: 0;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--cream-edge); }
+.btn:focus-visible, .card:focus-visible { outline: 3px solid var(--go); outline-offset: 2px; }
+#pauseBtn { width: 48px; font-size: 12px; box-shadow: none; border-color: var(--cream); background: var(--panel); color: var(--cream); border-width: 2px; border-radius: 8px; touch-action: none; }
+
+/* Stage */
+#stage {
+  flex: 1; min-height: 0; position: relative; overflow: hidden; background: #35246e;
+  border: 3px solid var(--cream); border-radius: 10px; touch-action: none;
+}
+#stage.menu { touch-action: pan-y; }
+#scene { display: block; width: 100%; height: 100%; image-rendering: crisp-edges; image-rendering: pixelated; }
+#caption {
+  position: absolute; left: 50%; top: 12px; transform: translateX(-50%); max-width: 92%; width: max-content;
+  font-family: var(--display); font-size: 11px; line-height: 1.5; text-align: center;
+  background: var(--ink); color: var(--cream); border: 2px solid var(--cream); border-radius: 6px; padding: 7px 10px;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s;
+}
+#caption.show { opacity: 1; }
+#caption.promo { background: #ffd84a; color: var(--ink); border-color: var(--ink); }
+#caption.good { background: var(--go); color: var(--ink); border-color: var(--ink); }
+.chip {
+  position: absolute; font-family: var(--display); font-size: 8px; line-height: 1.3; padding: 5px 7px;
+  border: 2px solid var(--ink); border-radius: 4px; pointer-events: none; display: none;
+}
+.chip.show { display: block; }
+#ribbon { right: 8px; top: 54px; background: var(--warn); color: var(--ink); }
+#streak { left: 8px; top: 54px; background: var(--ink); color: var(--go); border-color: var(--go); }
+#gadgetChip { left: 6px; bottom: 6px; background: #120a1ed9; color: var(--cream); border-color: var(--cream); }
+#gadgetChip.ready { color: var(--ink); background: #ffd84a; border-color: var(--ink); }
+
+/* Tutorial card: the run is stopped while it shows */
+#coach {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); width: 92%;
+  display: flex; flex-direction: column; gap: 7px; align-items: center; text-align: center;
+  background: var(--ink); border: 3px solid var(--go); border-radius: 8px; padding: 11px 12px; pointer-events: none;
+}
+#coach[hidden] { display: none; }
+#coach.warn { border-color: var(--bad); }
+#coachHead { font-family: var(--display); font-size: 14px; line-height: 1.3; color: var(--go); font-weight: normal; }
+#coach.warn #coachHead { color: var(--bad); }
+#coachText { font-size: 21px; line-height: 1.02; text-wrap: balance; }
+#coachGo { font-family: var(--display); font-size: 9px; font-style: normal; color: #ffd84a; }
+#controls .btn.pulse { animation: pulse 0.55s ease-in-out infinite alternate; }
+@keyframes pulse { from { outline: 0 solid rgba(125, 255, 107, 0.95); } to { outline: 7px solid rgba(125, 255, 107, 0.95); } }
+
+/* Music button: same place and look as Slop Fairies */
+#mute { position: absolute; right: 6px; bottom: 6px; width: 34px; height: 34px; padding: 0; font-size: 19px; line-height: 1; background: #120a1ed9; color: var(--cream); border: 2px solid var(--cream); border-radius: 6px; cursor: pointer; }
+#mute.off { opacity: .45; text-decoration: line-through; }
+#mute:focus-visible { outline: 3px solid var(--go); outline-offset: 2px; }
+
+/* Controls */
+#controls { display: grid; grid-template-columns: 1fr 1.7fr 1fr; gap: 10px; height: 68px; flex: none; }
+#controls .btn { height: 64px; display: flex; align-items: center; justify-content: center; touch-action: none; }
+#controls svg { width: 26px; height: 26px; display: block; }
+.btn.item { flex-direction: column; gap: 7px; font-size: 11px; position: relative; }
+.btn.item.empty { background: #4a3a6e; color: #9a8cbc; border-color: #33244f; box-shadow: 0 4px 0 #24163f; }
+.btn.item.wait { background: #cfc5a3; color: #5f5374; }
+.btn.item.ready { background: var(--go); box-shadow: 0 4px 0 #3f9a35; }
+.btn.item.gold { background: #ffd84a; box-shadow: 0 4px 0 #b8941f; }
+.hold { width: 70%; height: 6px; background: rgba(42, 26, 58, 0.25); border-radius: 2px; overflow: hidden; }
+.btn.item.empty .hold { visibility: hidden; }
+.hold i { display: block; height: 100%; width: 0; background: var(--ink); }
+.hold i.drip { background: var(--bad); }
+
+/* Screens */
+.screen {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 14px; text-align: center; background: rgba(27, 16, 48, 0.86); overflow-x: hidden; overflow-y: auto;
+}
+/* centred when it fits, scrollable from the top when it does not */
+.screen { justify-content: flex-start; }
+.screen > :first-child { margin-top: auto; }
+.screen > :last-child { margin-bottom: auto; }
+.screen.menu > :first-child, .screen.menu > :last-child { margin-top: 0; margin-bottom: 0; }
+.screen[hidden] { display: none; }
+.screen.menu { justify-content: flex-start; align-items: stretch; background: rgba(27, 16, 48, 0.95); padding-bottom: 48px; gap: 10px; }
+.title { font-family: var(--display); font-size: 30px; line-height: 1.25; margin: 0; color: #ffd84a; text-shadow: 3px 3px 0 var(--bad); text-wrap: balance; }
+.title.sm { font-size: 16px; text-shadow: 2px 2px 0 var(--bad); }
+.title.win { color: var(--go); text-shadow: 3px 3px 0 #12300c; }
+.title.lose { font-size: 20px; color: var(--warn); text-shadow: 3px 3px 0 var(--ink); }
+.screen p { margin: 0; font-size: 22px; line-height: 1.05; max-width: 24ch; text-wrap: balance; }
+.screen.menu p { max-width: none; }
+.screen p.small { font-size: 19px; opacity: 0.85; }
+.screen .btn { font-size: 13px; padding: 16px 22px; flex: none; }
+.screen .btn.quiet { background: var(--panel); color: var(--cream); border-color: var(--cream); box-shadow: none; font-size: 10px; padding: 12px 14px; border-width: 2px; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.scrap { font-family: var(--display); font-size: 9px; background: var(--ink); border: 2px solid var(--warn); color: var(--warn); border-radius: 6px; padding: 6px 8px; white-space: nowrap; }
+.list { display: grid; gap: 7px; }
+.card {
+  display: grid; grid-template-columns: 26px 1fr auto; gap: 10px; align-items: center; text-align: left; width: 100%;
+  background: var(--panel); color: var(--cream); border: 2px solid var(--cream); border-radius: 8px; padding: 8px 10px; cursor: pointer; font: inherit;
+}
+.card .n { font-family: var(--display); font-size: 14px; color: #ffd84a; text-align: center; }
+.card .t { font-family: var(--display); font-size: 10px; line-height: 1.4; display: block; }
+.card .s { font-size: 18px; line-height: 1; opacity: 0.8; display: block; margin-top: 3px; }
+.card .r { font-family: var(--display); font-size: 8px; text-align: right; white-space: nowrap; }
+.card.locked { opacity: 0.5; border-style: dashed; cursor: default; }
+.card.on { border-color: var(--go); }
+.stars { display: inline-flex; gap: 2px; }
+.stars svg { width: 14px; height: 14px; fill: #5a4a80; }
+.stars svg.on { fill: #ffd84a; }
+.stars.big svg { width: 34px; height: 34px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 7px; }
+.row3 .btn.quiet { padding: 11px 4px; font-size: 8px; line-height: 1.5; }
+.gadget { background: var(--panel); border: 2px solid var(--cream); border-radius: 8px; padding: 9px 10px; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; text-align: left; }
+.gadget.on { border-color: var(--go); }
+.gadget b { font-family: var(--display); font-size: 10px; font-weight: normal; color: #ffd84a; }
+.gadget span { font-size: 18px; line-height: 1; grid-column: 1 / -1; }
+.gadget .btn.quiet { padding: 9px 10px; font-size: 8px; }
+.gadget .btn.quiet.can { background: var(--warn); color: var(--ink); border-color: var(--ink); }
+.gadget .btn.quiet.eq { background: var(--go); color: var(--ink); border-color: var(--ink); }
+.gadget .btn.quiet[disabled] { opacity: 0.5; cursor: default; }
+
+/* The bedroom wall */
+#board { position: relative; display: grid; gap: 12px; padding: 4px 2px 8px; }
+#string { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+#string polyline { fill: none; stroke: #e0263a; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.note { position: relative; width: 84%; background: #f6ecc9; color: var(--ink); padding: 14px 10px 9px; text-align: left; box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.45); }
+.note:nth-child(odd) { justify-self: start; transform: rotate(-1.5deg); }
+.note:nth-child(even) { justify-self: end; transform: rotate(1.5deg); }
+.note .pin { position: absolute; top: 4px; left: 50%; width: 9px; height: 9px; margin-left: -4px; border-radius: 50%; background: #e0263a; box-shadow: 1px 1px 0 var(--ink); }
+.note b { font-family: var(--display); font-size: 9px; font-weight: normal; line-height: 1.4; display: block; }
+.note span { font-size: 18px; line-height: 1; display: block; margin-top: 4px; }
+.note i { font-size: 17px; line-height: 1; display: block; margin-top: 5px; opacity: 0.75; }
+.note.missing { background: #4a3a6e; color: #b0a4cc; box-shadow: none; border: 2px dashed #6a5a90; }
+.note.missing .pin { background: #6a5a90; box-shadow: none; }
+.note.core { justify-self: center !important; transform: none !important; background: var(--ink); color: #ffd84a; border: 2px solid #e0263a; text-align: center; }
+
+.how { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; text-align: left; font-size: 21px; line-height: 1; }
+.how li { display: flex; align-items: center; gap: 10px; }
+.how canvas { width: 40px; height: 40px; flex: none; image-rendering: crisp-edges; image-rendering: pixelated; }
+.how .bad { color: var(--bad); font-weight: normal; }
+.how .go { color: var(--go); font-weight: normal; }
+.stats { display: grid; grid-template-columns: auto auto; gap: 3px 18px; font-size: 20px; text-align: left; margin: 0; }
+.stats dt { opacity: 0.75; }
+.stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.badge { font-family: var(--display); font-size: 9px; line-height: 1.5; padding: 6px 8px; background: var(--go); color: var(--ink); border-radius: 4px; }
+.badge.scrapgain { background: var(--warn); }
+.badge[hidden], .found[hidden] { display: none; }
+.found { background: #f6ecc9; color: var(--ink); padding: 9px 10px; max-width: 300px; box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.45); transform: rotate(-1deg); }
+.found b { font-family: var(--display); font-size: 9px; font-weight: normal; line-height: 1.5; display: block; color: #b0182a; }
+.found span { font-size: 18px; line-height: 1; display: block; margin-top: 3px; }
+#storyText { display: grid; gap: 9px; }
+#storyText p { font-size: 21px; max-width: 26ch; }
+#storySub { font-family: var(--display); font-size: 10px; line-height: 1.5; color: var(--go); }
+#storySub:empty { display: none; }
+@media (max-height: 640px) {
+  .screen { gap: 8px; padding: 10px; }
+  .title { font-size: 22px; }
+  .title.lose { font-size: 16px; }
+  .title.sm { font-size: 13px; }
+  .screen p { font-size: 20px; }
+  #storyText p { font-size: 19px; }
+  .how { font-size: 19px; gap: 5px; }
+  .how canvas { width: 32px; height: 32px; }
+  .stats { font-size: 18px; gap: 2px 16px; }
+  .stars.big svg { width: 26px; height: 26px; }
+  .screen .btn { padding: 12px 18px; }
+  .screen .btn.quiet { padding: 9px 12px; }
+  .card { padding: 6px 9px; }
+  .card .s { font-size: 16px; }
+  #coach { padding: 8px 10px; gap: 5px; }
+  #coachText { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) { #caption { transition: none; } .btn:active { transform: none; } #controls .btn.pulse { animation: none; outline: 5px solid var(--go); } }
+</style>
+</head>
+<body>
+<main id="app">
+  <header id="hud">
+    <div class="pill slop">
+      <div class="row"><span class="k">SLOP</span><span class="v" id="slopNum">0%</span></div>
+      <div class="bar"><i id="slopBar"></i></div>
+    </div>
+    <div class="pill home">
+      <div class="row"><span class="k" id="homeKey">HOME</span><span class="v" id="homeNum">0m</span></div>
+    </div>
+    <button class="btn" id="pauseBtn" type="button" aria-label="Pause">II</button>
+  </header>
+
+  <section id="stage" aria-label="The street">
+    <canvas id="scene" width="216" height="330"></canvas>
+    <div id="caption" role="status"></div>
+    <div class="chip" id="ribbon">VALUED CUSTOMER</div>
+    <div class="chip" id="streak"></div>
+    <div class="chip" id="gadgetChip"></div>
+    <div id="coach" role="status" hidden><b id="coachHead"></b><span id="coachText"></span><i id="coachGo"></i></div>
+
+    <div class="screen menu" id="homeScreen">
+      <div class="top"><h1 class="title sm">SLOP RUN</h1><span class="scrap"><span id="scrapNum">0</span> SCRAP</span></div>
+      <p class="small" id="homeGoal">Cancel the plan. Find out who enrolled you. Get home.</p>
+      <div class="list" id="chapters"></div>
+      <div class="row3">
+        <button class="btn quiet" id="wallBtn" type="button">THE WALL<br><span id="wallCount">0/5</span></button>
+        <button class="btn quiet" id="benchBtn" type="button">WORKBENCH<br><span id="benchNow">NO GADGET</span></button>
+        <button class="btn quiet" id="howBtn" type="button">HOW TO<br>PLAY</button>
+      </div>
+    </div>
+
+    <div class="screen menu" id="wallScreen" hidden>
+      <div class="top"><h2 class="title sm">THE WALL</h2><button class="btn quiet back" type="button">BACK</button></div>
+      <p class="small">Every chapter you finish pins one more piece of evidence here.</p>
+      <div id="board"></div>
+    </div>
+
+    <div class="screen menu" id="benchScreen" hidden>
+      <div class="top"><h2 class="title sm">WORKBENCH</h2><span class="scrap"><span id="scrapNum2">0</span> SCRAP</span></div>
+      <p class="small">Build gadgets from Scrap. One comes with you on each run.</p>
+      <div class="list" id="gadgets"></div>
+      <p class="small">Scrap comes from clean encounters, item hits, declined promotions, new stars and getting home.</p>
+      <div class="btnrow"><button class="btn quiet back" type="button">BACK</button></div>
+    </div>
+
+    <div class="screen menu" id="howScreen" hidden>
+      <div class="top"><h2 class="title sm">HOW TO PLAY</h2><button class="btn quiet back" type="button">BACK</button></div>
+      <p>Get home before SLOP hits 100%.</p>
+      <ul class="how">
+        <li><canvas id="icoDodge" width="40" height="40"></canvas><span><b class="bad">DODGE</b> sellers. A hit fills SLOP.</span></li>
+        <li><canvas id="icoGrab" width="40" height="40"></canvas><span><b class="go">GRAB</b> green items if you like.</span></li>
+        <li><canvas id="icoThrow" width="40" height="40"></canvas><span><b class="go">THROW</b> them at a seller in your lane.</span></li>
+        <li><canvas id="icoRobot" width="40" height="40"></canvas><span>Robots change lane once. Yellow shows where.</span></li>
+        <li><canvas id="icoSelfie" width="40" height="40"></canvas><span>Her selfie stick blocks a second lane.</span></li>
+        <li><canvas id="icoBoxes" width="40" height="40"></canvas><span>Boxes are solid. Go around.</span></li>
+      </ul>
+      <p class="small">Stars: get home, get home with one hit or none, get home untouched.</p>
+      <div class="btnrow"><button class="btn quiet" id="coachBtn" type="button">TUTORIAL: ON</button></div>
+    </div>
+
+    <div class="screen" id="storyScreen" hidden>
+      <h2 class="title sm" id="storyTitle"></h2>
+      <div id="storySub"></div>
+      <div id="storyText"></div>
+      <button class="btn" id="storyBtn" type="button">CONTINUE</button>
+    </div>
+
+    <div class="screen" id="pauseScreen" hidden>
+      <h2 class="title lose">PAUSED</h2>
+      <button class="btn" id="resumeBtn" type="button">KEEP RUNNING</button>
+      <div class="btnrow">
+        <button class="btn quiet" id="restartBtn" type="button">START OVER</button>
+        <button class="btn quiet" id="quitBtn" type="button">GO HOME</button>
+      </div>
+    </div>
+
+    <div class="screen" id="endScreen" hidden>
+      <h2 class="title" id="endTitle">HOME.</h2>
+      <span class="stars big" id="endStars"></span>
+      <p id="endLine"></p>
+      <div class="found" id="endFound" hidden><b id="endFoundName"></b><span id="endFoundText"></span></div>
+      <div class="btnrow"><span class="badge scrapgain" id="endScrap"></span><span class="badge" id="endUnlock" hidden></span></div>
+      <dl class="stats">
+        <dt>Score</dt><dd id="endScore">0</dd>
+        <dt>Best</dt><dd id="endBest">0</dd>
+        <dt id="endDistKey">Reached</dt><dd id="endDist">0m</dd>
+        <dt>Hits</dt><dd id="endHits">0</dd>
+        <dt>Best streak</dt><dd id="endStreak">0</dd>
+      </dl>
+      <div class="btnrow">
+        <button class="btn" id="nextBtn" type="button">NEXT</button>
+        <button class="btn quiet" id="againBtn" type="button">RUN AGAIN</button>
+        <button class="btn quiet" id="homeBtn" type="button">GO HOME</button>
+      </div>
+    </div>
+
+    <button id="mute" type="button" aria-label="Music on or off">&#9834;</button>
+  </section>
+
+  <footer id="controls">
+    <button class="btn" id="leftBtn" type="button" aria-label="Move left">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4 L6 12 L15 20 Z" fill="currentColor"/></svg>
+    </button>
+    <button class="btn item empty" id="itemBtn" type="button" aria-disabled="true">
+      <span id="itemLabel">NO ITEM</span>
+      <span class="hold"><i id="itemTimer"></i></span>
+    </button>
+    <button class="btn" id="rightBtn" type="button" aria-label="Move right">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 L18 12 L9 20 Z" fill="currentColor"/></svg>
+    </button>
+  </footer>
+</main>
+<audio id="song1" src="audio/slop-1.mp3" preload="auto"></audio>
+<audio id="song2" src="audio/slop-2.mp3" preload="auto"></audio>
+<script>
+/* Slop Run: background music. Same module as Slop Fairies (slop/src/js/ui/music.js); only the import/export wrapper differs. */
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+// Background music: the first song plays, crossfades into the second, and the two keep alternating.
+// Fades run through Web Audio gain nodes because iPhones ignore <audio>.volume; without Web Audio, volume is used.
+// Browsers only allow sound inside a tap, and on phones only when the finger lifts (touchend / pointerup, not pointerdown),
+// so every tap retries until a song is actually playing.
+
+const FADE = 4, LEVEL = .55, KEY = 'slop.music';
+
+function createMusic(ids) {
+  const els = ids.map(id => $(id));
+  let ctx = null, gains = [], cur = 0, started = false, handing = false;   // started: a song has really begun
+  let muted = (() => { try { return localStorage.getItem(KEY) === 'off'; } catch { return false; } })();
+
+  function wire() {
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      gains = els.map(el => { const g = ctx.createGain(); g.gain.value = 0; ctx.createMediaElementSource(el).connect(g).connect(ctx.destination); return g; });
+    } catch { ctx = null; }
+  }
+
+  function set(i, to, secs = 0) {
+    if (!ctx) { els[i].volume = to; return; }
+    const g = gains[i].gain, t = ctx.currentTime;
+    g.cancelScheduledValues(t); g.setValueAtTime(secs ? g.value : to, t);
+    if (secs) g.linearRampToValueAtTime(to, t + secs);
+  }
+
+  // Called from every tap. iPhone keeps an audio engine silent ("suspended") unless it is woken inside a tap,
+  // and suspends it again after calls or backgrounding, so each tap wakes it if needed.
+  const awake = () => !ctx || ctx.state === 'running';
+  function start() {
+    if (muted) return;
+    if (!ctx && !gains.length) wire();
+    if (!awake()) ctx.resume();
+    if (started) return;
+    const [first, second] = els;
+    set(0, LEVEL); first.currentTime = 0;
+    first.play().then(() => { started = true; }, () => {});
+    if (second.paused) { set(1, 0); second.play().then(() => { if (!handing) second.pause(); }, () => {}); }   // unlocks song two in this tap
+  }
+
+  // Run every frame: when the playing song is FADE seconds from its end, bring the other one in over it.
+  function tick() {
+    if (!started || muted) return;
+    const a = els[cur], next = 1 - cur, b = els[next];
+    if (!handing && a.duration && a.duration - a.currentTime <= FADE) {
+      handing = true; b.currentTime = 0; set(next, 0);
+      b.play().catch(() => {});
+      set(next, LEVEL, FADE); set(cur, 0, FADE);
+      if (!ctx) fadeByVolume(a, b);
+    }
+    if (handing && (a.ended || a.currentTime >= a.duration - .05)) { a.pause(); cur = next; handing = false; }
+  }
+
+  function fadeByVolume(a, b) {
+    const t0 = performance.now(), step = () => {
+      const u = Math.min(1, (performance.now() - t0) / FADE / 1000);
+      a.volume = LEVEL * (1 - u); b.volume = LEVEL * u;
+      if (u < 1) requestAnimationFrame(step);
+    };
+    step();
+  }
+
+  function pauseAll() { els.forEach(el => el.pause()); }
+  function resume() {
+    if (!started || muted) return;
+    if (!awake()) ctx.resume();
+    els[cur].play().catch(() => {});
+    if (handing) els[1 - cur].play().catch(() => {});
+  }
+
+  function toggle() {
+    muted = !muted;
+    try { localStorage.setItem(KEY, muted ? 'off' : 'on'); } catch { /* remembered this visit only */ }
+    if (muted) pauseAll(); else if (started) resume(); else start();
+  }
+
+  for (const type of ['touchend', 'pointerup', 'click', 'keydown']) document.addEventListener(type, start, true);
+  document.addEventListener('visibilitychange', () => document.hidden ? pauseAll() : resume());
+
+  return { tick, toggle, get muted() { return muted; }, get playing() { return started && awake() && !els[cur].paused; } };
+}
+
+  window.SlopMusic = { createMusic: createMusic };
+})();
+
+</script>
+<script>
+/* Slop Run: placeholder pixel art and a 3x5 pixel font, as plain data. */
+(function (root, factory) {
+  var api = factory();
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.SlopArt = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  var SPRITES = {
+    /* Sample mascot: nugget bucket costume, red cap, tray held out. */
+    mascot: {
+      pal: { R: '#d8342c', r: '#a3211c', W: '#fff4dc', S: '#f2b98a', K: '#2a1a3a', Y: '#f0a62a', y: '#c97a14', T: '#7a5230' },
+      rows: [
+        '.....RRRRRR.....',
+        '....RRRRRRRR....',
+        '....RRRRRRRRRR..',
+        '....SSSSSSSS....',
+        '....SKSSSSKS....',
+        '....SSSSSSSS....',
+        '....SKSSSSKS....',
+        '....SSKKKKSS....',
+        'YyYy.SSSSSS.....',
+        'yYyY.RRWWRR...S.',
+        'TTTTSRRWWRRRSSS.',
+        '.TT.SRWYYYWRSS..',
+        '....RRWYyYWRR...',
+        '....RRWYYYWRR...',
+        '....RRWWWWWRR...',
+        '....rRRRRRRRr...',
+        '.....rrrrrrr....',
+        '.....KK...KK....',
+        '.....KK...KK....',
+        '....KKK...KKK...'
+      ]
+    },
+    /* Energy rep: green tracksuit, lightning bolt, huge can. */
+    rep: {
+      pal: { G: '#2fbf5a', g: '#1c8a3d', S: '#e8ad80', K: '#2a1a3a', L: '#ffe24a', C: '#8a4fd8', c: '#6335a8', W: '#ffffff', H: '#3a2a1a' },
+      rows: [
+        '.....HHHHHH.....',
+        '....HHHHHHHH....',
+        '....HSSSSSSH....',
+        '....SKSSSSKS....',
+        '....SSSSSSSS....',
+        '....SWWWWWWS....',
+        '.....SSSSSS.....',
+        '...GGGGGGGGGG.CC',
+        '..GGGGGLLGGGGGCC',
+        '.SGGGGLLGGGGGSCc',
+        '.S.GGGLLLLGG.SCc',
+        '.S.GGGGGLLGG..Cc',
+        '...GGGGLLGGG..Cc',
+        '...gGGGLGGGg..cc',
+        '...gggggggggg...',
+        '...GGG....GGG...',
+        '...GGG....GGG...',
+        '...GGG....GGG...',
+        '..WWWK....KWWW..',
+        '..WWWW....WWWW..'
+      ]
+    },
+    /* Delivery robot: box body, screen face, wheels, bag on top. */
+    robot: {
+      pal: { W: '#f2efe6', w: '#c9c4d6', D: '#1d1730', C: '#5ff0ff', O: '#e0a15a', o: '#b9783a', K: '#2a1a3a', G: '#8d86a3', A: '#ffb000' },
+      rows: [
+        '.....OOOOOO.....',
+        '.....OoKKoO.....',
+        '.....OOOOOO.....',
+        '.....OOOOOO.....',
+        '..WWWWWWWWWWWW..',
+        '.WWWWWWWWWWWWWW.',
+        '.WDDDDDDDDDDDDW.',
+        '.WDDCCDDDDCCDDW.',
+        '.WDDCCDDDDCCDDW.',
+        '.WDDDDDDDDDDDDW.',
+        '.WDDCDDDDDDCDDW.',
+        '.WDDDCCCCCCDDDW.',
+        '.WDDDDDDDDDDDDW.',
+        '.WWWWWWWWWWWWWW.',
+        '.wwAAwwwwwwAAww.',
+        '.wwwwwwwwwwwwww.',
+        '..GGGGGGGGGGGG..',
+        '.KKKK......KKKK.',
+        '.KKKK......KKKK.',
+        '..KK........KK..'
+      ]
+    },
+    /* Giant drink. */
+    cup: {
+      pal: { P: '#8a4fd8', p: '#6335a8', L: '#ffe24a', W: '#f4ecff', R: '#ff5a6e' },
+      rows: [
+        '.....RR.',
+        '....RR..',
+        '.WWWRWW.',
+        'PPPPPPPP',
+        'PPPPLPPp',
+        '.PPLLPp.',
+        '.PLLLLp.',
+        '.PPPLLp.',
+        '.PPLPPp.',
+        '..PPPp..',
+        '..PPPp..',
+        '..pppp..'
+      ]
+    },
+    /* Nugget tray. */
+    tray: {
+      pal: { Y: '#f0a62a', y: '#c97a14', T: '#7a5230', t: '#5a3a20' },
+      rows: [
+        '.Yy..YY.yY..',
+        'YYYyYYYyYYYy',
+        'yYYYyYYYYyYY',
+        'TTTTTTTTTTTT',
+        '.tttttttttt.'
+      ]
+    },
+    /* Delivery bag. */
+    bag: {
+      pal: { O: '#e0a15a', o: '#b9783a', K: '#2a1a3a', R: '#d8342c' },
+      rows: [
+        '..K....K..',
+        '.K......K.',
+        '.K......K.',
+        'OOOOOOOOOO',
+        'OOOOOOOOOo',
+        'OOORRRROOo',
+        'OOORRRROOo',
+        'OOOOOOOOOo',
+        'OOOOOOOOOo',
+        'oooooooooo'
+      ]
+    },
+    /* Influencer: sunglasses, pink top. Her selfie stick is drawn by the renderer into the next lane. */
+    influencer: {
+      pal: { Y: '#ffd84a', S: '#f2b98a', K: '#2a1a3a', R: '#ff5a6e', P: '#ff6fa8', W: '#ffffff', B: '#4f7ad8' },
+      rows: [
+        '....YYYYYYYY....',
+        '...YYYYYYYYYY...',
+        '..YYYSSSSSSYYY..',
+        '..YYKKKSSKKKYY..',
+        '..YYSSSSSSSSYY..',
+        '..YYSSRRRRSSYY..',
+        '..YY.SSSSSS.YY..',
+        '..Y.PPPPPPPP.Y..',
+        '...PPPPPPPPPP...',
+        '..SPPPPWWPPPPS..',
+        '..S.PPPWWPPP.S..',
+        '..S.PPPPPPPP.S..',
+        '....SSSSSSSS....',
+        '....BBBBBBBB....',
+        '....BBBBBBBB....',
+        '....SS....SS....',
+        '....SS....SS....',
+        '....SS....SS....',
+        '...WWW....WWW...',
+        '...WWW....WWW...'
+      ]
+    },
+    /* Subscription boxes: a stack that does not move and cannot be thrown at. */
+    boxes: {
+      pal: { O: '#d9a066', o: '#a8733f', R: '#d8342c', W: '#fff4dc' },
+      rows: [
+        '...OOOOOOOOOO...',
+        '...OOOORROOOO...',
+        '...OOOORROOOO...',
+        '...OOOOOOOOOO...',
+        '...oooooooooo...',
+        '..OOOOOOOOOOOO..',
+        '..OOOOORROOOOO..',
+        '..OOWWWRRWWWOO..',
+        '..OOOOORROOOOO..',
+        '..OOOOOOOOOOOO..',
+        '..oooooooooooo..',
+        '.OOOOOOOOOOOOOO.',
+        '.OOOOOORROOOOOO.',
+        '.OOWWWWRRWWWWOO.',
+        '.OOOOOORROOOOOO.',
+        '.OOOOOOOOOOOOOO.',
+        '.OOOOOOOOOOOOOO.',
+        '.oooooooooooooo.'
+      ]
+    },
+    /* Phone. */
+    phone: {
+      pal: { K: '#2a1a3a', C: '#5ff0ff', P: '#ff6fa8', W: '#ffffff' },
+      rows: [
+        '.KKKK.',
+        'KCCCCK',
+        'KCCCCK',
+        'KCPPCK',
+        'KCPPCK',
+        'KCCCCK',
+        'KCCCCK',
+        'KCCCCK',
+        'KKWWKK',
+        '.KKKK.'
+      ]
+    },
+    /* Fairy, sitting on the billboards. */
+    fairy: {
+      pal: { Y: '#ffe07a', S: '#f6c9a0', V: '#b98cf0', W: '#eaf6ff', K: '#2a1a3a' },
+      rows: [
+        '..YYY..',
+        '.YYYYY.',
+        'WYSSSYW',
+        'WWSKSWW',
+        'W.VVV.W',
+        '..VVV..',
+        '..S.S..'
+      ]
+    }
+  };
+
+  /* 3x5 font. Each glyph is 15 cells, row by row. */
+  var FONT = {
+    A: '010101111101101', B: '110101110101110', C: '011100100100011', D: '110101101101110',
+    E: '111100110100111', F: '111100110100100', G: '011100101101011', H: '101101111101101',
+    I: '111010010010111', J: '001001001101010', K: '101101110101101', L: '100100100100111',
+    M: '101111111101101', N: '101111111111101', O: '010101101101010', P: '110101110100100',
+    Q: '010101101111011', R: '110101110101101', S: '011100010001110', T: '111010010010010',
+    U: '101101101101111', V: '101101101101010', W: '101101111111101', X: '101101010101101',
+    Y: '101101010010010', Z: '111001010100111',
+    '0': '111101101101111', '1': '010110010010111', '2': '110001010100111', '3': '110001010001110',
+    '4': '101101111001001', '5': '111100110001110', '6': '011100110101010', '7': '111001010010010',
+    '8': '010101010101010', '9': '010101011001110',
+    '!': '010010010000010', '.': '000000000000010', ',': '000000000010100', ':': '000010000010000',
+    '%': '101001010100101', '*': '101010101000000', '-': '000000111000000', "'": '010010000000000',
+    '?': '110001010000010', '/': '001001010100100', '+': '000010111010000', ' ': '000000000000000'
+  };
+
+  var SIGNS = [
+    ['FREE', 'SAMPLES'],
+    ['BUY NOW', 'REGRET LATER'],
+    ['NOW WITH', 'FOOD'],
+    ['REST', 'HARDER'],
+    ['CANCEL', 'ANYTIME*'],
+    ['ONE BITE', 'FAMILY SIZE'],
+    ['SLEEP IS A', 'LEGACY FEATURE'],
+    ['PRE-APPROVED', 'TO REGRET'],
+    ['YOUR BREAK', 'IS MONETIZED'],
+    ['ORDER', 'AGAIN?'],
+    ['DELIVERED', 'TO NEIGHBOR'],
+    ['LINK IN', 'BIO'],
+    ['PART 2', 'IN COMMENTS'],
+    ['30-YEAR', 'NUGGET PLAN'],
+    ['4 PAYMENTS', '1 NUGGET'],
+    ['USER', 'SATISFIED 100%']
+  ];
+
+  return { SPRITES: SPRITES, FONT: FONT, SIGNS: SIGNS };
+});
+
+</script>
+<script>
+/* Slop Run: simulation, districts and the street director. No DOM here, so it runs headless under node. */
+(function (root, factory) {
+  var api = factory();
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.SlopSim = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  /* ---- Rules shared by every district. Speed, density and hit cost live on the district. ---- */
+  var CFG = {
+    LANE_TIME: 0.16,        // seconds to cross one lane
+    HIT: 16,                // default slop per collision (districts override)
+    HIT_GRACE: 1.0,         // seconds of no-damage after a hit
+    PICKUP_COST: 3,         // slop for choosing a marked pickup
+    HOLD_SAFE: 4,           // seconds an item can be held for free
+    HOLD_DRIP: 2,           // slop per second after that
+    HOLD_CAP: 12,           // most one item can ever drip
+    RECOVER_DELAY: 3,       // seconds without a hit before recovery starts
+    RECOVER_RATE: 1,        // slop per second recovered
+    SUB_HIT: 10,            // subscription boxes: slop on contact...
+    SUB_DRIP: 1,            // ...then this much per second...
+    SUB_TIME: 6,            // ...for this long. Never stacks, only refreshes.
+    HIT_HALF_WIDTH: 0.5,    // lanes; collision is lane geometry, not sprite size
+    VIEW_SECONDS: 6,        // things appear this many seconds of running ahead
+    VIEW_MIN: 40,           // and never closer than this, in metres
+    TARGET_MIN_T: 0.15,     // an item can reach a seller this close to contact (seconds)
+    TARGET_MAX_T: 2.8,      // ...and this far away
+    SECONDARY_T: 1.6,       // a signature play can pull a second seller arriving within this many seconds
+    ROBOT_SIGNAL: 3.2,      // seconds before contact the turn signal starts
+    ROBOT_MOVE_START: 2.0,  // seconds before contact the lane change starts
+    ROBOT_MOVE_END: 1.05,   // seconds before contact it is locked in (spec: at least 0.9)
+    SCORE: { METRE: 1, PASS: 25, CLEAR: 40, SECOND: 30, HOME: 200, STREAK: 5, STREAK_CAP: 10 },
+    PROMO_NOTICE: 3.0,      // seconds before a fairy promotion arrives that it is announced
+    PROMO_BONUS: 100,       // score for getting through a promotion untouched
+    SENDER_WINDOW: 1.0,     // Return to Sender: a hit this close to contact counts as well-timed
+    AD_BLOCK_NEED: 3,       // Ad Blocker: item clears needed to cancel the next promotion
+    SHRED_SUB_TIME: 3,      // Receipt Shredder: subscription drip lasts this long instead of SUB_TIME
+    SCRAP: { ENCOUNTER: 1, ITEM: 1, PROMO: 3, HOME: 10, STAR: 5 },
+    DT: 1 / 60,
+
+    /* Changes from revision 2 of the spec. */
+    USE_RELIEF: 5,                    // slop removed by a successful item use (spec: 0)
+    SIGNATURE_RELIEF: 8,              // slop removed by a signature payoff (spec: 0)
+    RECOVER_NEEDS_EMPTY_HANDS: false, // spec: true
+    AUTO_DROP_AT_CAP: true            // replaces the DISCARD button (spec: manual discard)
+  };
+
+  var PUSHERS = {
+    mascot:     { walk: 1.2, item: 'tray',  hitLine: 'FREE SAMPLE!' },
+    rep:        { walk: 3.8, item: 'cup',   hitLine: 'TRY A SIP!' },
+    robot:      { walk: 1.6, item: 'bag',   hitLine: 'ORDER DELIVERED' },
+    influencer: { walk: 1.0, item: 'phone', hitLine: 'LINK IN BIO!' },
+    boxes:      { walk: 0,   item: null,    hitLine: 'SUBSCRIBED!', solid: true }
+  };
+
+  var ITEMS = {
+    cup: {
+      label: 'THROW CUP', pickupLine: 'GRABBED A DRINK', signature: 'robot', secondary: null,
+      lines: { mascot: 'SOGGY NUGGETS', rep: 'REVIEWING THE SPILL', robot: 'DELIVERY COMPLETE', influencer: 'CONTENT RUINED', boxes: 'SHREDDED' }
+    },
+    tray: {
+      label: 'TOSS TRAY', pickupLine: 'GRABBED A TRAY', signature: 'mascot', secondary: ['mascot'],
+      lines: { mascot: "I'M ON A BULK", rep: 'CHEAT MEAL', robot: 'SCANNING NUGGET', influencer: 'MUKBANG TIME', boxes: 'SHREDDED' }
+    },
+    bag: {
+      label: 'THROW BAG', pickupLine: 'GRABBED A BAG', signature: 'robot', secondary: ['robot', 'mascot'],
+      lines: { mascot: 'UNBOXING!', rep: 'UNBOXING!', robot: 'ORDER READY', influencer: 'HAUL VIDEO', boxes: 'SHREDDED' }
+    },
+    phone: {
+      label: 'USE PHONE', pickupLine: 'GRABBED A PHONE', signature: 'influencer', secondary: ['mascot', 'rep', 'robot'],
+      lines: { mascot: 'POSING NOW', rep: 'POSING NOW', robot: 'FILMING ITSELF', influencer: 'AUTHENTIC MOMENT', boxes: 'SHREDDED' }
+    }
+  };
+
+  /* ---- Gadgets: built at home with Scrap, one equipped per run. Each changes a rule, none adds health or speed. ---- */
+  var GADGETS = {
+    lunchbox: { name: 'LUNCHBOX', cost: 40, text: 'Start every run holding a nugget tray. It never drips, so you choose when to spend it.' },
+    sender: { name: 'RETURN TO SENDER', cost: 90, text: 'Your first late throw each run (inside the last second) bounces on to hit a second seller.' },
+    shredder: { name: 'RECEIPT SHREDDER', cost: 120, text: 'Items can destroy subscription boxes, and a box hit drips for 3 seconds, not 6.' },
+    adblock: { name: 'AD BLOCKER', cost: 160, text: 'Clear 3 sellers with items and the next fairy promotion is cancelled before it arrives.' }
+  };
+
+  /* ---- Pattern library. Each row is [beats, type, lane, extra]. A beat is a district's own tempo in seconds.
+     Lanes: -1 left, 0 middle, 1 right. extra: {to} robot's destination, {wide} the lane an influencer's
+     selfie stick also blocks (+1 or -1), {item} for pickups. Every pattern also exists mirrored. ---- */
+  var L = -1, M = 0, R = 1;
+  var PATTERNS = {
+    one:          [[0, 'mascot', M]],
+    oneSide:      [[0, 'mascot', L]],
+    pair:         [[0, 'mascot', L], [0, 'mascot', M]],
+    split:        [[0, 'mascot', L], [0, 'mascot', R]],
+    zig:          [[0, 'mascot', L], [0, 'mascot', M], [1, 'mascot', M], [1, 'mascot', R]],
+    stairs:       [[0, 'mascot', L], [0.6, 'mascot', M], [1.2, 'mascot', R]],
+    sprint:       [[0, 'rep', M]],
+    sprintSide:   [[0, 'rep', L]],
+    repPair:      [[0, 'rep', R], [0, 'mascot', M]],
+    repGate:      [[0, 'rep', L], [0, 'rep', R], [0.8, 'rep', M]],
+    repZig:       [[0, 'rep', L], [0.7, 'rep', M], [1.4, 'rep', R]],
+    robot:        [[0, 'robot', R, { to: M }]],
+    robotPair:    [[0, 'robot', M, { to: L }], [0, 'mascot', R]],
+    robotCross:   [[0, 'robot', L, { to: M }], [0.9, 'robot', M, { to: R }]],
+    funnel:       [[0, 'mascot', L], [0.8, 'robot', R, { to: M }]],
+    robotRep:     [[0, 'robot', R, { to: M }], [0.7, 'rep', L], [1.4, 'mascot', R]],
+    selfie:       [[0, 'influencer', M, { wide: 1 }]],
+    selfieMascot: [[0, 'influencer', L, { wide: 1 }], [0.9, 'mascot', R]],
+    selfieZig:    [[0, 'influencer', L, { wide: 1 }], [1.1, 'influencer', R, { wide: -1 }]],
+    selfieRep:    [[0, 'influencer', M, { wide: 1 }], [0.8, 'rep', L]],
+    box:          [[0, 'boxes', M]],
+    boxPair:      [[0, 'boxes', L], [0, 'boxes', M]],
+    boxZig:       [[0, 'boxes', L], [0, 'boxes', M], [1.1, 'boxes', M], [1.1, 'boxes', R]],
+    boxGate:      [[0, 'boxes', L], [0, 'boxes', R], [0.8, 'rep', M]],
+    boxMix:       [[0, 'boxes', L], [0, 'mascot', M], [0.9, 'boxes', R], [0.9, 'robot', L, { to: M }]],
+    cupDeal:      [[0, 'mascot', M], [0, 'pickup', R, { item: 'cup' }], [1.5, 'rep', R]],
+    cupRobot:     [[0, 'pickup', L, { item: 'cup' }], [1.5, 'robot', M, { to: L }]],
+    bagDeal:      [[0, 'pickup', M, { item: 'bag' }], [1.5, 'robot', M, { to: R }], [1.9, 'mascot', M]],
+    trayDeal:     [[0, 'pickup', R, { item: 'tray' }], [1.5, 'mascot', M], [1.5, 'mascot', R]],
+    phoneDeal:    [[0, 'pickup', L, { item: 'phone' }], [1.5, 'influencer', L, { wide: 1 }], [2.5, 'mascot', R]],
+    // Fairy promotions: announced rushes. Longer and tighter than anything else on the street.
+    couponStorm:  [[0, 'mascot', L], [0, 'mascot', M], [0.85, 'mascot', M], [0.85, 'mascot', R], [1.7, 'mascot', L], [1.7, 'mascot', M], [2.55, 'mascot', M], [2.55, 'mascot', R]],
+    vipRush:      [[0, 'rep', L], [0, 'rep', R], [0.7, 'rep', M], [1.4, 'rep', L], [1.4, 'rep', R], [2.1, 'rep', M]],
+    parade:       [[0, 'influencer', L, { wide: 1 }], [0.9, 'boxes', M], [0.9, 'boxes', R], [1.8, 'influencer', R, { wide: -1 }], [2.7, 'mascot', L], [2.7, 'robot', R, { to: M }]],
+    // City Hall's last gate: KEEP MY BENEFITS, UPGRADE MY PLAN, and the open third lane.
+    cancelGate:   [[0, 'boxes', L], [0, 'boxes', M]]
+  };
+  var PROMO_NAMES = { couponStorm: 'COUPON STORM', vipRush: 'VIP RUSH', parade: 'PROMOTIONAL PARADE' };
+  function isDeal(id) { return id.slice(-4) === 'Deal' || id === 'cupRobot'; }
+  function beatsOf(id) { return Math.max.apply(null, PATTERNS[id].map(function (r) { return r[0]; })); }
+
+  /* ---- Chapters. Each is a trip to somewhere that supposedly handles cancellation. Each is faster and
+     tighter than the one before and introduces one thing (`teaches`). ---- */
+  var LEVELS = [
+    { id: 'food', chapter: 'FOOD', name: 'SNACK ROW', told: 'Contact your provider.', teaches: 'mascot',
+      speed: 6.5, seconds: 44, beat: 1.5, gap: [1.3, 1.9], laneCost: 0.55, hit: 16, seed: 11,
+      intro: ['one', 'pair', 'cupDeal'], outro: ['cupRobot'],
+      pool: { one: 2, oneSide: 2, pair: 4, split: 3, zig: 3, stairs: 1, sprintSide: 3, sprint: 2, repPair: 2, trayDeal: 2, cupDeal: 1 } },
+    { id: 'bank', chapter: 'BANKING', name: 'SNACK BANK PLAZA', told: 'Settle your balance.', teaches: 'boxes',
+      speed: 7.3, seconds: 46, beat: 1.35, gap: [1.15, 1.65], laneCost: 0.5, hit: 18, seed: 23,
+      intro: ['box', 'boxPair', 'robot'],
+      pool: { box: 2, boxPair: 4, boxZig: 3, boxGate: 3, boxMix: 2, robot: 1, robotPair: 3, funnel: 2, repPair: 2, repGate: 2, zig: 1, cupRobot: 2, bagDeal: 1, trayDeal: 1 } },
+    { id: 'feed', chapter: 'THE FEED', name: 'FOR YOU AVENUE', told: 'Manage your preferences.', teaches: 'influencer',
+      speed: 8, seconds: 50, beat: 1.25, gap: [1.0, 1.5], laneCost: 0.48, hit: 18, seed: 37,
+      intro: ['selfie', 'selfieMascot'],
+      pool: { selfie: 3, selfieMascot: 4, selfieZig: 3, selfieRep: 3, robotPair: 2, robotCross: 2, robotRep: 2, repGate: 2, repZig: 2, boxPair: 1, zig: 1, phoneDeal: 2, bagDeal: 1 } },
+    { id: 'news', chapter: 'NEWS', name: 'BREAKING NEWS BLVD', told: 'Tell your story.', teaches: 'promo',
+      speed: 8.5, seconds: 52, beat: 1.2, gap: [0.95, 1.4], laneCost: 0.46, hit: 20, seed: 41,
+      intro: ['repPair'], promoEvery: 4, promos: ['couponStorm', 'vipRush'],
+      pool: { repGate: 3, repZig: 3, robotCross: 3, robotRep: 3, selfieZig: 2, selfieRep: 2, boxZig: 2, boxGate: 2, stairs: 2, zig: 2, cupRobot: 1, phoneDeal: 1, trayDeal: 1, bagDeal: 1 } },
+    { id: 'hall', chapter: 'CITY HALL', name: 'CANCELLATION DEPT', told: 'Speak to a supervisor.', teaches: 'promo',
+      speed: 9, seconds: 58, beat: 1.15, gap: [0.9, 1.3], laneCost: 0.44, hit: 20, seed: 53,
+      intro: ['boxPair'], outro: ['cancelGate'], promoEvery: 3, promos: ['couponStorm', 'vipRush', 'parade'],
+      pool: { boxZig: 3, boxGate: 3, boxMix: 3, selfieZig: 3, selfieRep: 2, robotCross: 2, robotRep: 2, repZig: 2, repGate: 2, stairs: 1, cupRobot: 1, phoneDeal: 1, trayDeal: 1, bagDeal: 1 } }
+  ];
+
+  /* Endless: starts like chapter 1 at a faster pace and keeps tightening. Each chapter's sellers join 18 seconds apart. */
+  var ENDLESS = {
+    id: 'endless', chapter: 'ENDLESS', name: 'THE LONG WAY HOME', told: 'No door. See how far you get.', endless: true,
+    speed: 7, ramp: 0.05, maxSpeed: 12, hit: 20, rampSeconds: 110,
+    beat: [1.4, 1.0], gap: [[1.2, 1.7], [0.75, 1.1]], laneCost: [0.52, 0.4], phaseSeconds: 18,
+    promoEvery: 5, promos: ['couponStorm', 'vipRush', 'parade'], promoFrom: 54
+  };
+
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function lerp(a, b, u) { return a + (b - a) * u; }
+  function rng(seed) {
+    var s = seed >>> 0;
+    return function () {
+      s = (s + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* Lanes a street entry blocks at contact. Pickups block nothing. */
+  function blockedBy(d) {
+    if (d.type === 'pickup') return [];
+    var lane = d.to === undefined ? d.lane : d.to;
+    return d.wide ? [lane, lane + d.wide] : [lane];
+  }
+
+  /* ---- Director: lays patterns end to end, and only where a no-item route still exists. ---- */
+  function Director(level, seed) {
+    this.level = level;
+    this.rnd = rng(seed === undefined ? level.seed : seed);
+    this.cursor = level.first || 3.4;        // contact time of the next pattern, seconds
+    this.reach = [0]; this.reachT = 0;       // lanes a player could safely be in, and when
+    this.lastId = null; this.introIx = 0; this.sinceDeal = 9; this.log = [];
+    this.enc = 0; this.sincePromo = 0; this.promoIx = 0; this.promoCount = 0;
+  }
+
+  Director.prototype.params = function (t) {
+    var lv = this.level;
+    if (!lv.endless) return { beat: lv.beat, gap: lv.gap, laneCost: lv.laneCost, pool: lv.pool, promos: lv.promos };
+    var u = clamp(t / lv.rampSeconds, 0, 1), pool = {}, phases = Math.min(LEVELS.length, 1 + Math.floor(t / lv.phaseSeconds));
+    for (var i = 0; i < phases; i++) for (var k in LEVELS[i].pool) pool[k] = (pool[k] || 0) + LEVELS[i].pool[k] * (i === phases - 1 ? 2 : 1);
+    return {
+      beat: lerp(lv.beat[0], lv.beat[1], u), laneCost: lerp(lv.laneCost[0], lv.laneCost[1], u),
+      gap: [lerp(lv.gap[0][0], lv.gap[1][0], u), lerp(lv.gap[0][1], lv.gap[1][1], u)], pool: pool,
+      promos: t >= lv.promoFrom ? lv.promos : null
+    };
+  };
+
+  Director.prototype._build = function (id, mirror, t0, beat) {
+    return PATTERNS[id].map(function (row) {
+      var x = row[3] || {}, s = mirror ? -1 : 1;
+      var d = { p: id, type: row[1], lane: row[2] * s, t: Math.round((t0 + row[0] * beat) * 1000) / 1000 };
+      if (x.to !== undefined) d.to = x.to * s;
+      if (x.wide) d.wide = x.wide * s;
+      if (x.item) d.item = x.item;
+      return d;
+    });
+  };
+
+  /* Walk the pattern's contact groups. Returns the lanes still reachable afterwards, or null if it traps the player. */
+  Director.prototype._check = function (ents, laneCost) {
+    var reach = this.reach, at = this.reachT, i = 0;
+    ents = ents.slice().sort(function (a, b) { return a.t - b.t; });
+    while (i < ents.length) {
+      var t = ents[i].t, blocked = {}, picks = [], n = 0;
+      for (; i < ents.length && Math.abs(ents[i].t - t) < 1e-6; i++) {
+        if (ents[i].type === 'pickup') { picks.push(ents[i].lane); continue; }
+        blockedBy(ents[i]).forEach(function (l) { if (!blocked[l]) { blocked[l] = true; n++; } });
+      }
+      if (n >= 3) return null;
+      for (var p = 0; p < picks.length; p++) if (blocked[picks[p]]) return null;
+      var span = Math.floor((t - at) / laneCost + 1e-9), next = [];
+      for (var lane = -1; lane <= 1; lane++) {
+        if (blocked[lane]) continue;
+        for (var r = 0; r < reach.length; r++) if (Math.abs(lane - reach[r]) <= span) { next.push(lane); break; }
+      }
+      if (!next.length) return null;
+      reach = next; at = t;
+    }
+    return { reach: reach, at: at };
+  };
+
+  Director.prototype._pick = function (pool) {
+    var total = 0, k;
+    for (k in pool) if (this._allowed(k)) total += pool[k];
+    var roll = this.rnd() * total;
+    for (k in pool) { if (!this._allowed(k)) continue; roll -= pool[k]; if (roll <= 0) return k; }
+    return 'one';
+  };
+  Director.prototype._allowed = function (id) {
+    if (id === this.lastId) return false;
+    if (isDeal(id)) return this.sinceDeal >= 3;
+    return true;
+  };
+
+  Director.prototype._commit = function (id, ents, ok, gap, promo) {
+    var enc = this.enc++, n = promo ? ++this.promoCount : 0;
+    ents.forEach(function (d) { d.enc = enc; if (promo) { d.promo = n; d.promoName = PROMO_NAMES[id]; } });
+    this.reach = ok.reach; this.reachT = ok.at;
+    this.cursor = ok.at + gap[0] + this.rnd() * (gap[1] - gap[0]) + (promo ? 0.5 : 0);
+    this.lastId = id; this.log.push(id);
+    this.sinceDeal = isDeal(id) ? 0 : this.sinceDeal + 1;
+    this.sincePromo = promo ? 0 : this.sincePromo + 1;
+    return ents;
+  };
+
+  /* Place one more pattern and return its entries. */
+  Director.prototype.next = function () {
+    var lv = this.level;
+    for (var tries = 0; tries < 40; tries++) {
+      var pr = this.params(this.cursor);
+      var intro = lv.intro && this.introIx < lv.intro.length;
+      var promo = !intro && pr.promos && this.sincePromo >= lv.promoEvery;
+      var id = intro ? lv.intro[this.introIx] : promo ? pr.promos[this.promoIx % pr.promos.length] : tries > 30 ? 'one' : this._pick(pr.pool);
+      var mirror = intro ? false : this.rnd() < 0.5;
+      var t0 = this.cursor + (promo ? 0.6 : 0);          // a promotion gets a little extra lead-in
+      for (var m = 0; m < 2; m++) {
+        var ents = this._build(id, m ? !mirror : mirror, t0, pr.beat);
+        var ok = this._check(ents, pr.laneCost);
+        if (ok) {
+          if (intro) this.introIx++;
+          if (promo) this.promoIx++;
+          return this._commit(id, ents, ok, pr.gap, promo);
+        }
+      }
+      if (intro || promo || tries % 6 === 5) this.cursor += 0.25;   // give the player a little more room and try again
+    }
+    return [];
+  };
+
+  /* A whole chapter's street, the same every time for a given seed. */
+  function buildStreet(level, seed) {
+    var d = new Director(level, seed), ents = [], outro = level.outro || [], reserve = 0;
+    outro.forEach(function (id) { reserve += beatsOf(id) * level.beat + level.gap[1]; });
+    while (d.cursor < level.seconds - 2.4 - reserve) {
+      var part = d.next();
+      if (!part.length) break;
+      if (part[part.length - 1].t > level.seconds - 1.6 - reserve) break;   // leave the last stretch to the front door clear
+      ents = ents.concat(part);
+    }
+    // Outro patterns are pinned to the end of the street and never mirrored.
+    outro.forEach(function (id) {
+      var t0 = Math.max(d.cursor, level.seconds - 1.8 - beatsOf(id) * level.beat);
+      for (var k = 0; k < 12; k++) {
+        var part = d._build(id, false, t0 + k * 0.1, level.beat), ok = d._check(part, level.laneCost);
+        if (ok) { ents = ents.concat(d._commit(id, part, ok, level.gap, false)); break; }
+      }
+    });
+    return ents;
+  }
+
+  /* ---- One run. `level` is a district, ENDLESS, or a hand-built { ents: [...] } for tests. ---- */
+  function Run(level, opts) {
+    level = level || LEVELS[0]; opts = opts || {};
+    this.level = level;
+    this.endless = !!level.endless;
+    this.speed0 = level.speed || 6;
+    this.ramp = level.ramp || 0;
+    this.maxSpeed = level.maxSpeed || this.speed0;
+    this.hitCost = level.hit || CFG.HIT;
+    this.seconds = this.endless ? Infinity : (level.seconds || 55);
+    this.length = this.endless ? Infinity : this._distAt(this.seconds);
+    this.ents = []; this.nextId = 0;
+    this.director = null;
+    this.gadget = opts.gadget || null;
+    this.encs = {}; this.promoSeen = {};
+    if (level.ents) this._add(level.ents);
+    else if (this.endless) { this.director = new Director(level, opts.seed === undefined ? 1 : opts.seed); this._feed(); }
+    else this._add(buildStreet(level, opts.seed));
+    this.t = 0; this.dist = 0;
+    this.x = 0;            // continuous lateral position, in lanes
+    this.sel = 0;          // selected destination lane
+    this.slop = 0; this.grace = 0; this.sinceHit = 99; this.sub = 0;
+    this.item = null; this.itemAge = 0; this.itemDrip = 0; this.itemFree = false;
+    if (this.gadget === 'lunchbox') { this.item = 'tray'; this.itemFree = true; }   // your own lunch: no drip
+    this.adCount = 0; this.senderUsed = false;
+    this.awards = 0; this.streak = 0;
+    this.status = 'ready'; // ready | running | paused | won | lost
+    this.events = [];
+    this.stats = { hits: 0, passes: 0, clears: 0, seconds: 0, ricochets: 0, pickups: 0, signatures: 0, drops: 0, maxStreak: 0,
+                   cleanEnc: 0, promos: 0, promosDeclined: 0, blocked: 0, bestPlay: null, bestRank: 0 };
+  }
+
+  Run.prototype.speedAt = function (t) { return Math.min(this.maxSpeed, this.speed0 + this.ramp * t); };
+  Run.prototype._distAt = function (t) {
+    if (!this.ramp) return this.speed0 * t;
+    var tm = (this.maxSpeed - this.speed0) / this.ramp;
+    return t <= tm ? this.speed0 * t + 0.5 * this.ramp * t * t : this.speed0 * tm + 0.5 * this.ramp * tm * tm + this.maxSpeed * (t - tm);
+  };
+  Run.prototype.view = function () { return Math.max(CFG.VIEW_MIN, this.speedAt(this.t) * CFG.VIEW_SECONDS); };
+
+  Run.prototype._add = function (defs) {
+    for (var i = 0; i < defs.length; i++) {
+      var d = defs[i], isPickup = d.type === 'pickup';
+      this.ents.push({
+        id: this.nextId++, pattern: d.p || '', type: d.type, item: d.item || null,
+        lane: d.lane, to: d.to === undefined ? d.lane : d.to, wide: d.wide || 0,
+        tc: d.t, closing: this.speedAt(d.t) + (isPickup ? 0 : PUSHERS[d.type].walk),
+        solid: !isPickup && !!PUSHERS[d.type].solid,
+        enc: d.enc, promo: d.promo || 0, promoName: d.promoName || '',
+        resolved: false, cleared: false, clearedAt: 0, clearDir: 0, outcome: null
+      });
+      if (d.enc !== undefined) {
+        if (!this.encs[d.enc]) this.encs[d.enc] = { left: 0, hit: false, promo: d.promo || 0, blocked: false };
+        this.encs[d.enc].left++;
+      }
+    }
+    this.ents.sort(function (a, b) { return a.tc - b.tc || a.id - b.id; });
+  };
+  Run.prototype._feed = function () {
+    var t = this.t || 0;
+    while (this.director.cursor < t + 14) { var part = this.director.next(); if (!part.length) break; this._add(part); }
+    if (this.ents.length > 80) this.ents = this.ents.filter(function (e) { return e.tc > t - 4; });
+  };
+
+  Run.prototype.start = function () { if (this.status === 'ready') this.status = 'running'; };
+  Run.prototype.pause = function () { if (this.status === 'running') this.status = 'paused'; };
+  Run.prototype.resume = function () { if (this.status === 'paused') this.status = 'running'; };
+  Run.prototype.over = function () { return this.status === 'won' || this.status === 'lost'; };
+
+  Run.prototype.score = function () {
+    return Math.floor(this.dist) * CFG.SCORE.METRE + this.awards + (this.status === 'won' ? CFG.SCORE.HOME : 0);
+  };
+  /* Stars: get home, get home with at most one hit, get home untouched. */
+  Run.prototype.stars = function () {
+    if (this.status !== 'won') return 0;
+    return 1 + (this.stats.hits <= 1 ? 1 : 0) + (this.stats.hits === 0 ? 1 : 0);
+  };
+
+  /* Scrap earned this run: clean encounters, item hits, declined promotions, and getting home. */
+  Run.prototype.scrap = function () {
+    var st = this.stats, k = CFG.SCRAP;
+    return st.cleanEnc * k.ENCOUNTER + (st.clears + st.seconds + st.ricochets) * k.ITEM + st.promosDeclined * k.PROMO + (this.status === 'won' ? k.HOME : 0);
+  };
+  Run.prototype.senderReady = function () { return this.gadget === 'sender' && !this.senderUsed; };
+  Run.prototype.wellTimed = function (e) { return e.tc - this.t <= CFG.SENDER_WINDOW; };
+  Run.prototype.adReady = function () { return this.gadget === 'adblock' && this.adCount >= CFG.AD_BLOCK_NEED; };
+
+  Run.prototype.depth = function (e) { return (e.tc - this.t) * e.closing; };
+
+  /* Lateral position of an entity at time t (defaults to now). */
+  Run.prototype.entX = function (e, t) {
+    if (e.lane === e.to) return e.lane;
+    if (t === undefined) t = this.t;
+    var a = e.tc - CFG.ROBOT_MOVE_START, b = e.tc - CFG.ROBOT_MOVE_END;
+    if (t <= a) return e.lane;
+    if (t >= b) return e.to;
+    var u = (t - a) / (b - a);
+    return e.lane + (e.to - e.lane) * (u * u * (3 - 2 * u));
+  };
+
+  /* Lanes the entity blocks when it reaches the player. */
+  Run.prototype.lanesOf = function (e) {
+    if (e.type === 'pickup') return [];
+    return e.wide ? [e.to, e.to + e.wide] : [e.to];
+  };
+  /* The lane an entity counts as being in for item targeting. */
+  Run.prototype.targetLane = function (e) {
+    if (e.lane === e.to) return e.lane;
+    return this.t >= e.tc - CFG.ROBOT_MOVE_START ? e.to : e.lane;
+  };
+  Run.prototype.inTargetLane = function (e, lane) {
+    return this.targetLane(e) === lane || (e.wide !== 0 && e.lane + e.wide === lane);
+  };
+
+  Run.prototype.signalling = function (e) {
+    if (e.lane === e.to || e.cleared) return false;
+    var left = e.tc - this.t;
+    return left <= CFG.ROBOT_SIGNAL && left >= CFG.ROBOT_MOVE_END;
+  };
+
+  Run.prototype.move = function (dir) {
+    if (this.status !== 'running') return false;
+    var next = clamp(this.sel + (dir < 0 ? -1 : 1), -1, 1);
+    if (next === this.sel) return false;
+    this.sel = next;
+    return true;
+  };
+
+  Run.prototype._movable = function (e) {
+    return e.type !== 'pickup' && (!e.solid || this.gadget === 'shredder') && !e.resolved && !e.cleared;
+  };
+  Run.prototype._eligible = function (e) {
+    if (!this._movable(e)) return false;
+    var left = e.tc - this.t;
+    return left >= CFG.TARGET_MIN_T && left <= CFG.TARGET_MAX_T;
+  };
+
+  /* The seller the held item would affect right now, or null. Boxes are solid: only a target with the Receipt Shredder. */
+  Run.prototype.target = function () {
+    if (!this.item || this.over()) return null;
+    var best = null;
+    for (var i = 0; i < this.ents.length; i++) {
+      var e = this.ents[i];
+      if (!this._eligible(e) || !this.inTargetLane(e, this.sel)) continue;
+      if (!best || e.tc < best.tc) best = e;
+    }
+    return best;
+  };
+
+  Run.prototype._clear = function (e, dirHint) {
+    e.cleared = true;
+    e.clearedAt = this.t;
+    var lane = this.targetLane(e);
+    e.clearDir = lane < 0 ? -1 : lane > 0 ? 1 : (dirHint || (this.x <= 0 ? 1 : -1));
+    e.outcome = 'cleared';
+  };
+
+  Run.prototype._streakUp = function () {
+    this.streak++;
+    if (this.streak > this.stats.maxStreak) this.stats.maxStreak = this.streak;
+    return Math.min(this.streak - 1, CFG.SCORE.STREAK_CAP) * CFG.SCORE.STREAK;
+  };
+
+  Run.prototype.use = function () {
+    if (this.status !== 'running') return false;
+    var target = this.target();
+    if (!target) return false;             // nothing in range: keep the item
+    var name = this.item, def = ITEMS[name];
+    var sig = def.signature === target.type;
+    this._clear(target);
+    this.awards += CFG.SCORE.CLEAR + this._streakUp();
+    this.stats.clears++;
+    var second = null;
+    if (sig && def.secondary) {
+      var bestGap = Infinity, view = this.view();
+      for (var i = 0; i < this.ents.length; i++) {
+        var e = this.ents[i];
+        if (e === target || !this._movable(e) || def.secondary.indexOf(e.type) < 0) continue;
+        if (e.tc - this.t < CFG.TARGET_MIN_T || this.depth(e) > view) continue;
+        var gap = Math.abs(e.tc - target.tc);
+        if (gap <= CFG.SECONDARY_T && gap < bestGap) { second = e; bestGap = gap; }
+      }
+      if (second) {
+        this._clear(second, target.clearDir);
+        this.awards += CFG.SCORE.SECOND + this._streakUp();
+        this.stats.seconds++;
+      }
+    }
+    var bounce = null;
+    if (this.senderReady() && this.wellTimed(target)) {     // Return to Sender: a late throw carries on to the next seller
+      for (var j = 0; j < this.ents.length; j++) {
+        var c = this.ents[j];
+        if (c === target || !this._movable(c) || c.tc - this.t < CFG.TARGET_MIN_T || this.depth(c) > this.view()) continue;
+        if (!bounce || c.tc < bounce.tc) bounce = c;
+      }
+      if (bounce) {
+        this._clear(bounce, target.clearDir);
+        this.awards += CFG.SCORE.SECOND + this._streakUp();
+        this.stats.ricochets++;
+        this.senderUsed = true;
+      }
+    }
+    this.adCount += 1 + (second ? 1 : 0) + (bounce ? 1 : 0);
+    if (sig) this.stats.signatures++;
+    this.slop = Math.max(0, this.slop - (sig ? CFG.SIGNATURE_RELIEF : CFG.USE_RELIEF));
+    var line = def.lines[target.type];
+    var rank = (second ? 2 : 0) + (bounce ? 2 : 0) + (sig ? 2 : 1);
+    if (rank > this.stats.bestRank) { this.stats.bestRank = rank; this.stats.bestPlay = line + (second && bounce ? ' x3' : second || bounce ? ' x2' : ''); }
+    this.item = null; this.itemAge = 0; this.itemDrip = 0; this.itemFree = false;   // never refilled automatically
+    this.events.push({ type: 'use', item: name, target: target, second: second, bounce: bounce, signature: sig, line: line });
+    return true;
+  };
+
+  Run.prototype._drop = function (why) {
+    this.events.push({ type: 'drop', item: this.item, why: why });
+    this.item = null; this.itemAge = 0; this.itemDrip = 0; this.itemFree = false;
+  };
+
+  Run.prototype._resolve = function (e) {
+    this._contact(e);
+    var enc = e.enc === undefined ? null : this.encs[e.enc];
+    if (!enc) return;
+    if (e.outcome === 'hit') enc.hit = true;
+    if (e.outcome === 'blocked') enc.blocked = true;
+    if (--enc.left > 0) return;
+    if (!enc.hit) {
+      this.stats.cleanEnc++;
+      if (enc.promo && !enc.blocked) {
+        this.stats.promosDeclined++;
+        this.awards += CFG.PROMO_BONUS;
+        this.events.push({ type: 'declined' });
+      }
+    }
+    delete this.encs[e.enc];
+  };
+
+  Run.prototype._contact = function (e) {
+    e.resolved = true;
+    if (e.cleared) return;                               // already scored (or blocked) when it was cleared
+    var lanes = e.type === 'pickup' ? [e.lane] : this.lanesOf(e), inLane = false;
+    for (var i = 0; i < lanes.length; i++) if (Math.abs(this.x - lanes[i]) < CFG.HIT_HALF_WIDTH) inLane = true;
+    if (e.type === 'pickup') {
+      if (inLane && !this.item) {
+        this.item = e.item; this.itemAge = 0; this.itemDrip = 0;
+        this.slop += CFG.PICKUP_COST;
+        this.stats.pickups++;
+        e.outcome = 'taken';
+        this.events.push({ type: 'pickup', item: e.item, line: ITEMS[e.item].pickupLine });
+      } else e.outcome = 'left';
+      return;
+    }
+    if (!inLane) {
+      e.outcome = 'passed';
+      this.awards += CFG.SCORE.PASS + this._streakUp();
+      this.stats.passes++;
+      return;
+    }
+    if (this.grace > 0) { e.outcome = 'grazed'; return; } // grace blocks damage, the forced item and the subscription
+    this.grace = CFG.HIT_GRACE;
+    this.sinceHit = 0;
+    this.streak = 0;
+    this.stats.hits++;
+    e.outcome = 'hit';
+    if (e.solid) {                                        // subscription boxes: smaller hit, then a short drip
+      this.slop += CFG.SUB_HIT;
+      this.sub = this.gadget === 'shredder' ? CFG.SHRED_SUB_TIME : CFG.SUB_TIME;   // refreshes, never stacks
+      this.events.push({ type: 'hit', by: e.type, item: null, replaced: null, line: PUSHERS[e.type].hitLine });
+      return;
+    }
+    this.slop += this.hitCost;
+    var old = this.item;
+    this.item = PUSHERS[e.type].item; this.itemAge = 0; this.itemDrip = 0; this.itemFree = false;
+    this.events.push({ type: 'hit', by: e.type, item: this.item, replaced: old, line: PUSHERS[e.type].hitLine });
+  };
+
+  Run.prototype.step = function (dt) {
+    if (this.status !== 'running') return;
+    if (dt === undefined) dt = CFG.DT;
+    this.t += dt;
+    this.dist = Math.min(this.length, this._distAt(this.t));
+
+    var maxMove = dt / CFG.LANE_TIME;
+    this.x += clamp(this.sel - this.x, -maxMove, maxMove);
+
+    this.grace = Math.max(0, this.grace - dt);
+    this.sinceHit += dt;
+
+    if (this.item && !this.itemFree) {
+      this.itemAge += dt;
+      if (this.itemAge > CFG.HOLD_SAFE && this.itemDrip < CFG.HOLD_CAP) {
+        var add = Math.min(CFG.HOLD_DRIP * dt, CFG.HOLD_CAP - this.itemDrip);
+        this.itemDrip += add;
+        this.slop += add;
+      }
+      if (CFG.AUTO_DROP_AT_CAP && this.itemDrip >= CFG.HOLD_CAP - 1e-9) this._drop('cap');
+    }
+    if (this.sub > 0) {
+      this.slop += Math.min(dt, this.sub) * CFG.SUB_DRIP;
+      this.sub = Math.max(0, this.sub - dt);
+    } else if (this.sinceHit > CFG.RECOVER_DELAY && !(CFG.RECOVER_NEEDS_EMPTY_HANDS && this.item)) {
+      this.slop = Math.max(0, this.slop - CFG.RECOVER_RATE * dt);
+    }
+
+    // Fairy promotions are announced a few seconds out. A charged Ad Blocker cancels the whole thing.
+    for (var p = 0; p < this.ents.length; p++) {
+      var q = this.ents[p];
+      if (q.tc - this.t > CFG.PROMO_NOTICE) break;
+      if (!q.promo || this.promoSeen[q.promo]) continue;
+      this.promoSeen[q.promo] = true;
+      this.stats.promos++;
+      if (this.adReady()) {
+        for (var b = 0; b < this.ents.length; b++) {
+          var w = this.ents[b];
+          if (w.promo !== q.promo || w.resolved || w.cleared) continue;
+          w.cleared = true; w.clearedAt = this.t; w.clearDir = w.to < 0 ? -1 : w.to > 0 ? 1 : (b % 2 ? 1 : -1); w.outcome = 'blocked';
+        }
+        this.adCount = 0; this.stats.blocked++;
+        this.events.push({ type: 'adblock', name: q.promoName });
+      } else this.events.push({ type: 'promo', name: q.promoName, n: this.stats.promos });
+    }
+
+    // Contacts, in time order.
+    for (var i = 0; i < this.ents.length; i++) {
+      var e = this.ents[i];
+      if (e.tc > this.t) break;
+      if (e.resolved) continue;
+      this._resolve(e);
+      if (this.slop >= 100) { this.slop = 100; this._end('lost'); return; }
+    }
+
+    if (this.t >= this.seconds) { this._end('won'); return; }   // an exact tie goes to reaching home
+    if (this.slop >= 100) { this.slop = 100; this._end('lost'); return; }
+    if (this.director) this._feed();
+  };
+
+  Run.prototype._end = function (status) {
+    this.status = status;
+    this.events.push({ type: status });
+  };
+
+  /* Seconds of free holding left, and how much of the drip cap is used (0..1). */
+  Run.prototype.hold = function () {
+    if (!this.item) return null;
+    return { safeLeft: Math.max(0, CFG.HOLD_SAFE - this.itemAge), drip: this.itemDrip / CFG.HOLD_CAP };
+  };
+
+  return { CFG: CFG, PUSHERS: PUSHERS, ITEMS: ITEMS, GADGETS: GADGETS, PATTERNS: PATTERNS, LEVELS: LEVELS, ENDLESS: ENDLESS,
+           Director: Director, buildStreet: buildStreet, blockedBy: blockedBy, Run: Run };
+});
+
+</script>
+<script>
+/* Slop Run: rendering, input, story, the wall and the workbench. Reads the simulation, never changes its rules. */
+(function () {
+  'use strict';
+  var S = window.SlopSim, A = window.SlopArt, CFG = S.CFG, LEVELS = S.LEVELS;
+  var $ = function (id) { return document.getElementById(id); };
+  var cv = $('scene'), ctx = cv.getContext('2d'), stage = $('stage');
+
+  var W = 216, H = 330, HOR = 118, YC = 284;   // virtual canvas, horizon row, contact row
+  var NEAR = 6, LW = 66, CAMF = 0.3, PX = 4;
+  var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var C = { ink: '#2a1a3a', go: '#7dff6b', warn: '#ffb000', bad: '#ff4d5e', gold: '#ffd84a', skin: '#f2b98a', sleeve: '#6b4fb3', cream: '#f6ecc9' };
+
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function hash(i) { var x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+
+  /* ---------- sprites and pixel text ---------- */
+  function mk(def) {
+    var rows = def.rows, c = document.createElement('canvas');
+    c.width = rows[0].length; c.height = rows.length;
+    var g = c.getContext('2d');
+    for (var y = 0; y < rows.length; y++) for (var x = 0; x < rows[y].length; x++) {
+      var ch = rows[y][x];
+      if (ch !== '.') { g.fillStyle = def.pal[ch]; g.fillRect(x, y, 1, 1); }
+    }
+    return c;
+  }
+  var SPR = {};
+  Object.keys(A.SPRITES).forEach(function (k) { SPR[k] = mk(A.SPRITES[k]); });
+
+  function textWidth(str) { return str.length * 4 - 1; }
+  function drawText(g, str, x, y, color) {
+    g.fillStyle = color;
+    for (var i = 0; i < str.length; i++) {
+      var glyph = A.FONT[str[i]] || A.FONT[' '];
+      for (var b = 0; b < 15; b++) if (glyph[b] === '1') g.fillRect(x + i * 4 + (b % 3), y + ((b / 3) | 0), 1, 1);
+    }
+  }
+  function plaque(lines, bg, fg, edge, k) {
+    k = k || 1;
+    var w = 0;
+    lines.forEach(function (l) { w = Math.max(w, textWidth(l)); });
+    var c = document.createElement('canvas');
+    c.width = (w + 6) * k; c.height = (lines.length * 6 + 5) * k;
+    var g = c.getContext('2d');
+    g.scale(k, k);
+    g.fillStyle = edge; g.fillRect(0, 0, w + 6, lines.length * 6 + 5);
+    g.fillStyle = bg; g.fillRect(1, 1, w + 4, lines.length * 6 + 3);
+    lines.forEach(function (l, i) { drawText(g, l, 3 + ((w - textWidth(l)) >> 1), 3 + i * 6, fg); });
+    return c;
+  }
+  var SIGNS = A.SIGNS.map(function (l) { return plaque(l, '#ffd84a', C.ink, C.ink, 2); });
+  var HOME_TAG = plaque(['HOME'], C.go, '#12300c', '#12300c');
+  var TAG_DODGE = plaque(['DODGE'], '#ff4d5e', '#ffffff', C.ink), TAG_GRAB = plaque(['GRAB'], C.go, '#12300c', '#12300c');
+  var GATE = [plaque(['KEEP MY', 'BENEFITS'], '#ff4d5e', '#ffffff', C.ink, 2), plaque(['UPGRADE', 'MY PLAN'], '#ff4d5e', '#ffffff', C.ink, 2),
+              plaque(['CONTINUE', 'WITHOUT', 'BENEFITS'], C.go, '#12300c', '#12300c', 2)];
+
+  /* ---------- how each chapter looks ---------- */
+  var ORDER = ['food', 'bank', 'feed', 'news', 'hall'];
+  var THEMES = {
+    food: { sky: ['#35246e', '#4a2f86', '#6a3c9c', '#9a4a9e', '#cf6690', '#f08a6a'], city: '#2c1d5c',
+            walls: ['#e8785a', '#d65a8a', '#f0b060', '#9a6ad0', '#5ab0c0', '#e89a6a'], awn: ['#fff4dc', '#ff6b7a', '#ffe07a', '#fff4dc', '#ff8fb0', '#c8f08a'],
+            road: '#5d5378', walk: '#8f83a8', dash: '#d9d0ee', signs: [0, 1, 2, 5, 6] },
+    bank: { sky: ['#0d1430', '#15214a', '#1f3160', '#2c4674', '#43648a', '#7f9bb0'], city: '#0a1024',
+            walls: ['#c8d0d8', '#8a98a8', '#e0d8b0', '#a0a8b8', '#d8c890', '#b0b8c8'], awn: ['#2a4a7a', '#ffd84a', '#2a4a7a', '#d8342c', '#2a4a7a', '#ffd84a'],
+            road: '#444c5e', walk: '#7a8494', dash: '#e6ecf4', signs: [4, 7, 13, 14, 1] },
+    feed: { sky: ['#4a1466', '#7a2488', '#b0389a', '#e6509c', '#ff7a90', '#ffb48a'], city: '#3a0f52',
+            walls: ['#ff6fa8', '#b060f0', '#ff9a5a', '#f04a9a', '#7a5af0', '#ffd06a'], awn: ['#ffffff', '#5ff0ff', '#ffffff', '#ffe07a', '#5ff0ff', '#ffffff'],
+            road: '#5a3a70', walk: '#9a72ac', dash: '#ffe0f0', signs: [11, 12, 8, 9, 3] },
+    news: { sky: ['#0a0f2c', '#141c4a', '#232a6a', '#5a2a6a', '#a0304a', '#e05a3a'], city: '#070a20',
+            walls: ['#d8342c', '#2a4ad8', '#e8e8f0', '#b0283a', '#3a5ae8', '#f0f0f8'], awn: ['#ffffff', '#ffd84a', '#d8342c', '#ffffff', '#ffd84a', '#2a4ad8'],
+            road: '#3c3a56', walk: '#727090', dash: '#f0f0ff', signs: [3, 8, 15, 1, 10] },
+    hall: { sky: ['#14241c', '#1f382a', '#2f5038', '#4a6e48', '#7a9460', '#c0c088'], city: '#0e1a14',
+            walls: ['#d8d4c0', '#b8b49c', '#e8e4d0', '#a8a890', '#c8c4a8', '#f0ecd8'], awn: ['#3a6a4a', '#8a2a2a', '#3a6a4a', '#c8a040', '#3a6a4a', '#8a2a2a'],
+            road: '#4a5048', walk: '#868c7c', dash: '#f0f0d8', signs: [4, 7, 13, 15, 6, 14] }
+  };
+  var skyline = [];
+  (function () {
+    var seed = 7;
+    function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    for (var x = 0; x < W; ) {
+      var w = 8 + Math.floor(rnd() * 12), h = 10 + Math.floor(rnd() * 34), wins = [];
+      for (var j = 0; j < 4; j++) wins.push([2 + Math.floor(rnd() * (w - 4)), 3 + Math.floor(rnd() * (h - 5))]);
+      skyline.push({ x: x, w: w, h: h, wins: wins });
+      x += w + 1;
+    }
+  })();
+
+  /* ---------- the story (Zach's outline, cut down to card length) ---------- */
+  var STORY = {
+    intro: { title: 'YOUR FREE TRIAL OF NORMAL LIFE HAS ENDED', go: 'START CANCELLING', lines: [
+      'You bought one drink on the way home. The receipt kept printing.',
+      'CUSTOMER ENROLLED IN TOTAL LIFESTYLE PLAN. Food. Entertainment. Credit. Opinions. Cancellation requires an in-person visit.',
+      '"You broke the seal," says the cashier.',
+      'Cancel the plan. Find out who enrolled you. Get home.'] },
+    food: { brief: ['The restaurant can cancel the meal plan. Supposedly.', 'Gary next door, foil hat on: "Follow the nuggets. It always comes back to the nuggets."'],
+            evidence: 'A DELIVERY SLIP', found: 'Every food outlet gets the same fairy-made base substance. Only the shapes and the packaging change.',
+            after: 'Inside the robot: a tiny fairy in a headset. "Customer is becoming difficult. Offer him points."' },
+    bank: { brief: ['The bank can close your account. Supposedly.', 'Gary: "The pigeons are drones. All of them."'],
+            evidence: 'THE ENDLESS RECEIPT', found: 'Your free sample was financed. Fees are charged in advance for purchases you have not wanted yet.',
+            after: 'One pigeon really is a drone. It only checks whether people finish their sandwiches.' },
+    feed: { brief: ['The app can delete your advertising profile. Supposedly.', 'Gary has started an anti-slop channel. He would like you to subscribe.'],
+            evidence: 'YOUR AD PROFILE', found: 'A schedule of what you are supposed to crave, buy, fear and argue about tomorrow.',
+            after: 'Gary has sponsors now. "This energy drink is different. I spoke to their founder." The founder is a fairy in a fake moustache.' },
+    news: { brief: ['A local reporter will expose the scheme. Supposedly.', 'The Chief Convenience Officer has noticed you. From here on he sends promotions.'],
+            evidence: 'THE SEGMENT SCRIPT', found: 'Your expose was already written, as a sponsored segment. The outrage is another product.',
+            after: 'Gary found out he was bought. He is furious, and he still has his sponsor pass to City Hall.' },
+    hall: { brief: ['The city can revoke the agreement. Supposedly.', '"We removed every inconvenience. Except cancelling. That would inconvenience us."', 'Gary is demanding to speak to every manager at once. At the end there are three lanes. Take the third.'],
+            evidence: 'THE RETENTION DASHBOARD', found: 'The whole town is a customer-retention experiment run by fairies. Nobody has ever finished cancelling.',
+            after: 'CUSTOMER LOST. REASON: WENT HOME.' },
+    ending: { title: 'CUSTOMER LOST', sub: 'REASON: WENT HOME', go: 'THE END', lines: [
+      'You shut the door and eat your leftovers. The wall is complete. Your phone is finally quiet.',
+      'Outside, the Chief Convenience Officer watches through the fence.',
+      '"What is he doing?"  "Nothing, sir."',
+      '"...Can we charge for that?"'] }
+  };
+  var CCO = ['OFFER HIM POINTS', 'WE REMOVED EVERY INCONVENIENCE', 'EXCEPT CANCELLING', 'UPGRADE HIM TO VIP', 'SEND THE PARADE'];
+
+  /* ---------- saved progress (this device only) ---------- */
+  var save = { stars: {}, best: {}, endless: 0, scrap: 0, owned: {}, gadget: null, seen: {}, briefed: {}, coach: true, intro: false, ended: false };
+  try {
+    var raw = JSON.parse(window.localStorage.getItem('slop-run-save') || 'null');
+    if (raw && typeof raw === 'object') for (var key in save) if (raw[key] !== undefined && raw[key] !== null) save[key] = raw[key];
+    if (save.gadget && !S.GADGETS[save.gadget]) save.gadget = null;
+  } catch (err) { /* start fresh */ }
+  function persist() { try { window.localStorage.setItem('slop-run-save', JSON.stringify(save)); } catch (err) { /* storage is optional */ } }
+  function starsOf(i) { return save.stars[LEVELS[i].id] || 0; }
+  function unlocked(i) { return i === 0 || starsOf(i - 1) >= 1; }
+  function endlessOpen() { return starsOf(1) >= 1; }
+  function evidenceCount() { var n = 0; for (var i = 0; i < LEVELS.length; i++) if (starsOf(i) >= 1) n++; return n; }
+
+  /* ---------- state ---------- */
+  var current = 0;                              // chapter index, or -1 for endless
+  var run = new S.Run(LEVELS[0]);
+  var cam = 0, clock = 0, acc = 0, last = 0, VIEW = 40, TH = THEMES.food;
+  var fx = { flash: 0, shots: [], bits: [], fall: null, useKick: 0, fairy: 0 };
+  var captionTimer = 0, taught = false;
+  var music = window.SlopMusic.createMusic(['song1', 'song2']), muteBtn = $('mute');
+
+  /* ---------- sound effects: short synth blips under the music, silenced by the music button ---------- */
+  var sfx = (function () {
+    var ac = null;
+    function wake() {
+      if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (err) { ac = null; } }
+      if (ac && ac.state === 'suspended') ac.resume();
+      return ac;
+    }
+    ['touchend', 'pointerup', 'click', 'keydown'].forEach(function (n) { document.addEventListener(n, wake, true); });
+    function tone(freq, dur, type, vol, to, delay) {
+      if (music.muted || !ac || ac.state !== 'running') return;
+      try {
+        var o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + (delay || 0);
+        o.type = type || 'square'; o.frequency.setValueAtTime(freq, t);
+        if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+        g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+      } catch (err) { /* sound is optional */ }
+    }
+    return {
+      hit: function () { tone(150, 0.25, 'sawtooth', 0.1, 55); },
+      pickup: function () { tone(620, 0.08, 'square', 0.05, 930); },
+      toss: function () { tone(380, 0.12, 'square', 0.05, 840); },
+      clear: function () { tone(880, 0.07, 'square', 0.05); tone(1180, 0.1, 'square', 0.05, 0, 0.07); },
+      bounce: function () { tone(1320, 0.07, 'triangle', 0.07, 0, 0.14); tone(1760, 0.12, 'triangle', 0.07, 0, 0.21); },
+      promo: function () { tone(520, 0.1, 'square', 0.06); tone(520, 0.1, 'square', 0.06, 0, 0.16); tone(700, 0.18, 'square', 0.06, 0, 0.32); },
+      block: function () { tone(300, 0.2, 'triangle', 0.09, 900); },
+      win: function () { [523, 659, 784, 1047].forEach(function (f, i) { tone(f, 0.16, 'square', 0.06, 0, i * 0.12); }); },
+      lose: function () { [392, 311, 233, 156].forEach(function (f, i) { tone(f, 0.2, 'sawtooth', 0.07, 0, i * 0.16); }); }
+    };
+  })();
+
+  /* ---------- coaching: the run stops at each new thing and says what to do ---------- */
+  var coach = { on: !!save.coach, seen: {}, hold: null };
+  var coachEl = $('coach'), coachBtn = $('coachBtn'), capEl = $('caption');
+  var LESSON = {
+    dodge: { head: 'DODGE!', text: 'Sellers fill your SLOP meter. Get out of his lane.', go: 'TAP AN ARROW OR SWIPE', pulse: ['leftBtn', 'rightBtn'], warn: true },
+    pickup: { head: 'GREEN = FREE ITEM', text: 'Step into its lane to grab it, or skip it.', go: 'TAP TO CONTINUE', pulse: [] },
+    throwIt: { head: 'THROW IT!', text: 'He is in your lane and your hands are full.', go: 'TAP THE GREEN BUTTON', pulse: ['itemBtn'] },
+    hit: { head: 'HE GOT YOU', text: 'SLOP went up, but you kept his stuff. Throw it at the next seller.', go: 'TAP TO CONTINUE', pulse: [], warn: true },
+    robot: { head: 'WATCH THE ARROW', text: 'Robots change lane once. The yellow strip is where it will end up.', go: 'TAP TO CONTINUE', pulse: [] },
+    boxes: { head: 'BOXES DO NOT MOVE', text: 'You cannot throw things at them. Go around, or get subscribed.', go: 'TAP TO CONTINUE', pulse: [], warn: true },
+    influencer: { head: 'SHE TAKES TWO LANES', text: 'Her selfie stick blocks the lane next to her as well.', go: 'TAP TO CONTINUE', pulse: [], warn: true },
+    promo: { head: 'FAIRY PROMOTION', text: 'A rush is coming. Get through it untouched for a bonus.', go: 'TAP TO CONTINUE', pulse: [], warn: true }
+  };
+  var TYPE_LEAD = { robot: 2.9, boxes: 2.3, influencer: 2.4 };
+  function setCoach(on) {
+    coach.on = on; save.coach = on;
+    if (on) { coach.seen = {}; save.seen = {}; } else if (coach.hold && LESSON[coach.hold] && !TYPE_LEAD[coach.hold] && coach.hold !== 'promo') release();
+    persist();
+    coachBtn.textContent = 'TUTORIAL: ' + (on ? 'ON' : 'OFF');
+  }
+  function holdFor(kind) {
+    var L = LESSON[kind];
+    coach.hold = kind;
+    $('coachHead').textContent = L.head; $('coachText').textContent = L.text; $('coachGo').textContent = L.go;
+    coachEl.className = L.warn ? 'warn' : '';
+    coachEl.hidden = false;
+    capEl.classList.remove('show');
+    L.pulse.forEach(function (id) { $(id).classList.add('pulse'); });
+  }
+  function release() {
+    if (!coach.hold) return;
+    LESSON[coach.hold].pulse.forEach(function (id) { $(id).classList.remove('pulse'); });
+    coach.hold = null; coachEl.hidden = true; acc = 0; last = 0;
+  }
+  function nextOpen(pickups) {
+    for (var i = 0; i < run.ents.length; i++) {
+      var e = run.ents[i];
+      if (!e.resolved && !e.cleared && (e.type === 'pickup') === pickups) return e;
+    }
+    return null;
+  }
+  function coachCheck() {
+    var e, left, i;
+    for (i = 0; i < run.ents.length; i++) {          // a kind of seller never met before, on any run
+      e = run.ents[i]; left = e.tc - run.t;
+      if (left > 3) break;
+      if (e.resolved || e.cleared || !TYPE_LEAD[e.type] || save.seen[e.type] || left > TYPE_LEAD[e.type] || left < 0.9) continue;
+      save.seen[e.type] = true; persist(); holdFor(e.type); return;
+    }
+    if (!coach.on) return;
+    if (!coach.seen.dodge && (e = nextOpen(false))) {
+      left = e.tc - run.t;
+      if (left <= 1.3) { coach.seen.dodge = true; if (run.lanesOf(e).indexOf(run.sel) >= 0) holdFor('dodge'); return; }
+    }
+    if (!coach.seen.pickup && !run.item && (e = nextOpen(true))) {
+      left = e.tc - run.t;
+      if (left <= 2.2 && left > 0.5) { coach.seen.pickup = true; holdFor('pickup'); return; }
+    }
+    if (!coach.seen.throwIt && run.item && (e = run.target()) && e.tc - run.t <= 2.4) { coach.seen.throwIt = true; holdFor('throwIt'); }
+  }
+
+  /* ---------- projection ---------- */
+  function sc(d) { return NEAR / (Math.max(d, -4.5) + NEAR); }
+  function py(d) { return HOR + (YC - HOR) * sc(d); }
+  function pxl(lx, d) { return W / 2 + (lx - cam) * LW * sc(d); }
+  function quad(x1, y1, x2, y2, x3, y3, x4, y4, col) {
+    ctx.fillStyle = col; ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.lineTo(x4, y4);
+    ctx.closePath(); ctx.fill();
+  }
+  function floorQuad(la, lb, da, db, col) {
+    quad(pxl(la, db), py(db), pxl(lb, db), py(db), pxl(lb, da), py(da), pxl(la, da), py(da), col);
+  }
+  function chevron(x, y, w, h, col) {
+    ctx.fillStyle = col; ctx.beginPath();
+    ctx.moveTo(x - w, y); ctx.lineTo(x + w, y); ctx.lineTo(x, y + h); ctx.closePath(); ctx.fill();
+  }
+  function layout() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    H = w > 0 ? clamp(Math.round(W * h / w), 250, 430) : 330;
+    cv.width = W; cv.height = H;
+    HOR = Math.round(H * 0.36); YC = H - 46;
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  /* ---------- drawing ---------- */
+  function drawSky() {
+    var bands = TH.sky, bh = Math.ceil(HOR / bands.length);
+    for (var i = 0; i < bands.length; i++) { ctx.fillStyle = bands[i]; ctx.fillRect(0, i * bh, W, bh); }
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    [[18, 0.2, 26], [120, 0.12, 34], [160, 0.42, 22], [60, 0.5, 18]].forEach(function (c) {
+      var y = Math.round(HOR * c[1]);
+      ctx.fillRect(c[0], y, c[2], 4); ctx.fillRect(c[0] + 4, y - 3, c[2] - 10, 3);
+    });
+    for (var s = 0; s < skyline.length; s++) {
+      var b = skyline[s];
+      ctx.fillStyle = TH.city; ctx.fillRect(b.x, HOR - b.h, b.w, b.h);
+      ctx.fillStyle = '#ffd84a';
+      for (var j = 0; j < b.wins.length; j++) ctx.fillRect(b.x + b.wins[j][0], HOR - b.h + b.wins[j][1], 1, 2);
+    }
+  }
+
+  function drawGround() {
+    var fd = run.length - run.dist;                 // depth of the front door line (Infinity when endless)
+    ctx.fillStyle = TH.walk; ctx.fillRect(0, HOR, W, H - HOR);
+    var far = Math.min(130, fd);
+    if (fd < 130) {                                 // lawn beyond the end of the street
+      ctx.fillStyle = '#4fa45a'; ctx.fillRect(0, HOR, W, Math.max(0, py(fd) - HOR));
+      ctx.fillStyle = '#3f8f4c'; ctx.fillRect(0, HOR, W, 2);
+    }
+    if (far > -4.4) {
+      floorQuad(-1.5, 1.5, -4.4, far, TH.road);
+      floorQuad(-1.56, -1.5, -4.4, far, 'rgba(255,255,255,0.4)');
+      floorQuad(1.5, 1.56, -4.4, far, 'rgba(255,255,255,0.4)');
+      floorQuad(run.x - 0.5, run.x + 0.5, -4.4, Math.min(4, far), 'rgba(125,255,107,0.13)');   // the lane you are in
+      var first = Math.ceil((run.dist - 4.4) / 4) * 4;
+      for (var z = first; z < run.dist + far; z += 4) {
+        var d = z - run.dist, d2 = Math.min(d + 1.6, far);
+        if (d2 <= d) continue;
+        for (var s = -1; s <= 1; s += 2) {
+          var hw = Math.max(0.03, 0.6 / (LW * sc(d)));
+          floorQuad(s * 0.5 - hw, s * 0.5 + hw, d, d2, TH.dash);
+        }
+      }
+    }
+    if (fd < 130 && fd > -4.4) {                    // checkered line, then the path to the door
+      for (var i = 0; i < 12; i++) for (var r = 0; r < 2; r++) {
+        floorQuad(-1.5 + i * 0.25, -1.25 + i * 0.25, fd + r * 0.5, fd + r * 0.5 + 0.5, (i + r) % 2 ? '#f6ecc9' : '#2a1a3a');
+      }
+      floorQuad(-0.45, 0.45, fd + 1, fd + 6, '#e8dcae');
+    }
+  }
+
+  function drawWall(side, i) {
+    var z = i * 10, d1 = z - run.dist, d2 = d1 + 10;
+    if (d2 < -4.4 || d1 > 120 || z >= run.length - 2) return;
+    if (d1 < -4.4) d1 = -4.4;
+    var k = Math.floor(hash(i * 2 + (side > 0 ? 1 : 0)) * 6), lx = side * 2.75, hh = 250;
+    function band(a, bb, u1, u2, col) {
+      var da = d1 + (d2 - d1) * u1, db = d1 + (d2 - d1) * u2;
+      var xa = pxl(lx, da), xb = pxl(lx, db), sa = sc(da), sb = sc(db), ya = py(da), yb = py(db);
+      quad(xa, ya - hh * sa * a, xa, ya - hh * sa * bb, xb, yb - hh * sb * bb, xb, yb - hh * sb * a, col);
+    }
+    band(0, 1, 0, 1, TH.walls[k]);
+    band(0.94, 1, 0, 1, 'rgba(42,26,58,0.35)');
+    band(0.5, 0.74, 0.12, 0.42, '#ffe9a0');
+    band(0.5, 0.74, 0.58, 0.88, '#ffe9a0');
+    band(0, 0.27, 0.4, 0.6, 'rgba(42,26,58,0.7)');
+    band(0.3, 0.41, 0, 1, TH.awn[k]);
+    band(0.3, 0.33, 0, 1, 'rgba(42,26,58,0.3)');
+    band(0, 1, 0.97, 1, 'rgba(42,26,58,0.25)');
+  }
+
+  function drawHouse() {
+    var d = run.length - run.dist + 6;
+    if (!(d < 130)) return;
+    var s = sc(d), x = pxl(0, d), y = py(d);
+    function r(dx, dy, w, h, col) { ctx.fillStyle = col; ctx.fillRect(Math.round(x + dx * s), Math.round(y + dy * s), Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s))); }
+    [-150, 150, -230, 230].forEach(function (tx) {
+      r(tx - 6, -40, 12, 40, '#6b4a2a'); r(tx - 30, -100, 60, 64, '#2f8a3f'); r(tx - 20, -116, 40, 20, '#3da34e');
+    });
+    r(-80, -90, 160, 90, '#f4dfae');
+    for (var i = 0; i < 7; i++) r(-92 + i * 12, -90 - (i + 1) * 9, 184 - i * 24, 9, i % 2 ? '#a3482f' : '#b9553a');
+    r(40, -150, 16, 34, '#8a6a5a');
+    r(-14, -52, 28, 52, '#7a3f2a'); r(6, -28, 4, 4, '#ffd84a');
+    r(-62, -64, 30, 26, '#ffe9a0'); r(32, -64, 30, 26, '#ffe9a0');
+    r(-62, -52, 30, 2, '#8a6a5a'); r(32, -52, 30, 2, '#8a6a5a');
+    var k = Math.max(1, Math.round(5 * s));
+    var bob = reduced ? 0 : Math.round(Math.sin(clock * 3) * 2);
+    ctx.drawImage(HOME_TAG, Math.round(x - HOME_TAG.width * k / 2), Math.round(y - 175 * s - HOME_TAG.height * k + bob), HOME_TAG.width * k, HOME_TAG.height * k);
+  }
+
+  /* Floor tells are drawn before any sprite so nothing covers them. Red: a seller will be here. Green: free item. Yellow: robot's destination. */
+  function drawTells() {
+    var blink = reduced ? true : (Math.floor(clock * 5) % 2 === 0);
+    for (var i = 0; i < run.ents.length; i++) {
+      var e = run.ents[i];
+      if (e.resolved || e.cleared) continue;
+      if ((e.tc - run.t) * 5 > VIEW) break;          // nothing later can be in view yet
+      var d = run.depth(e);
+      if (d > VIEW || d < 0) continue;
+      if (e.type === 'pickup') {
+        floorQuad(e.lane - 0.42, e.lane + 0.42, Math.max(0, d - 1.2), d + 1.2, 'rgba(125,255,107,' + (run.item ? 0.12 : 0.34) + ')');
+        continue;
+      }
+      var lanes = e.lane !== e.to ? [run.entX(e)] : run.lanesOf(e);
+      for (var l = 0; l < lanes.length; l++) floorQuad(lanes[l] - 0.44, lanes[l] + 0.44, Math.max(0, d - 3), d + 0.5, 'rgba(255,77,94,0.36)');
+      if (e.type === 'rep') {
+        for (var c = 1; c <= 3; c++) {
+          var cd = d - c * 3;
+          if (cd < 0.4) continue;
+          var s = sc(cd);
+          chevron(pxl(e.lane, cd), py(cd) - 5 * s, 16 * s, 9 * s, blink ? '#ff4d5e' : '#ff8a94');
+        }
+      } else if (run.signalling(e)) {
+        floorQuad(e.to - 0.46, e.to + 0.46, Math.max(0, d - 6), d + 0.6, blink ? 'rgba(255,216,74,0.8)' : 'rgba(255,216,74,0.42)');
+      } else if (e.pattern === 'cancelGate' && e.lane === -1) {
+        floorQuad(0.56, 1.44, Math.max(0, d - 8), d + 2, 'rgba(125,255,107,0.3)');      // the third lane
+      }
+    }
+  }
+
+  function entBox(e) {
+    var d = run.depth(e), s = sc(d), spr = SPR[e.type === 'pickup' ? e.item : e.type];
+    var off = e.cleared ? e.clearDir * (run.t - e.clearedAt) * 3.2 : 0, k = e.type === 'boxes' ? PX * 1.2 : PX;
+    return { x: pxl(run.entX(e) + off, d), y: py(d), w: spr.width * k * s, h: spr.height * k * s, s: s, d: d, spr: spr };
+  }
+
+  function tag(img, b, bottom) {            // a word over the thing, on tutorial runs only
+    if (!coach.on || b.d > 22 || b.d < 0.5) return;
+    var k = b.s > 0.6 ? 2 : 1, w = img.width * k, h = img.height * k;
+    ctx.drawImage(img, Math.round(b.x - w / 2), Math.round(bottom - h), w, h);
+  }
+
+  function drawEnt(e) {
+    if (e.type === 'pickup' && e.outcome === 'taken') return;
+    var b = entBox(e), alpha = clamp((VIEW - b.d) / 6, 0, 1);
+    if (b.d < 0) alpha *= clamp(1 + b.d / 1.3, 0, 1);
+    if (e.cleared) alpha *= clamp(1 - (run.t - e.clearedAt) / 0.9, 0, 1);
+    if (alpha <= 0.01) return;
+    var bob = 0;
+    if (!reduced && e.type !== 'pickup' && e.type !== 'boxes' && !e.cleared) bob = Math.sin(clock * (e.type === 'rep' ? 16 : 8) + e.id) * 1.6 * b.s;
+    ctx.globalAlpha = alpha * 0.35;
+    ctx.fillStyle = '#140a28';
+    ctx.fillRect(Math.round(b.x - b.w * 0.4), Math.round(b.y - 2 * b.s), Math.round(b.w * 0.8), Math.max(1, Math.round(4 * b.s)));
+    ctx.globalAlpha = alpha;
+    if (e.type === 'pickup') {
+      if (run.item) ctx.globalAlpha = alpha * 0.4;
+      var sw = 44 * b.s, sh = 30 * b.s;
+      ctx.fillStyle = C.cream; ctx.fillRect(Math.round(b.x - sw / 2), Math.round(b.y - sh), Math.round(sw), Math.round(sh));
+      ctx.fillStyle = C.ink; ctx.fillRect(Math.round(b.x - sw / 2), Math.round(b.y - sh), Math.round(sw), Math.max(1, Math.round(3 * b.s)));
+      var lift = reduced ? 0 : Math.sin(clock * 4) * 3 * b.s;
+      ctx.drawImage(b.spr, Math.round(b.x - b.w / 2), Math.round(b.y - sh - b.h + lift), Math.round(b.w), Math.round(b.h));
+      if (!run.item) { chevron(b.x, b.y - sh - b.h - 14 * b.s + lift, 10 * b.s, 9 * b.s, C.go); tag(TAG_GRAB, b, b.y - sh - b.h - 26 * b.s); }
+    } else {
+      if (e.wide && !e.cleared) {                   // selfie stick reaching into the next lane
+        var x2 = pxl(e.lane + e.wide, b.d), sy = b.y - b.h * 0.62 + bob, ph = SPR.phone;
+        ctx.fillStyle = '#3a2a4a';
+        ctx.fillRect(Math.round(Math.min(b.x, x2)), Math.round(sy), Math.round(Math.abs(x2 - b.x)), Math.max(1, Math.round(3 * b.s)));
+        ctx.drawImage(ph, Math.round(x2 - ph.width * 2.4 * b.s), Math.round(sy - ph.height * 3.6 * b.s), Math.round(ph.width * 4.8 * b.s), Math.round(ph.height * 4.8 * b.s));
+      }
+      ctx.drawImage(b.spr, Math.round(b.x - b.w / 2), Math.round(b.y - b.h + bob), Math.round(b.w), Math.round(b.h));
+      if (run.signalling(e)) {
+        var dir = e.to > e.lane ? 1 : -1, ax = b.x + dir * (b.w / 2 + 4 * b.s), ay = b.y - b.h * 0.7;
+        ctx.fillStyle = (reduced || Math.floor(clock * 5) % 2 === 0) ? '#ffd84a' : '#fff4c0'; ctx.beginPath();
+        ctx.moveTo(ax, ay - 12 * b.s); ctx.lineTo(ax, ay + 12 * b.s); ctx.lineTo(ax + dir * 18 * b.s, ay); ctx.closePath(); ctx.fill();
+      }
+      if (!e.cleared && !e.resolved) tag(TAG_DODGE, b, b.y - b.h - 4 * b.s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* KEEP MY BENEFITS / UPGRADE MY PLAN / CONTINUE WITHOUT BENEFITS, hung over the three lanes.
+     The middle sign hangs higher so each can be two lanes wide and still be read from a distance. */
+  function drawGate(e) {
+    var d = run.depth(e);
+    if (d > VIEW || d < -1) return;
+    var s = sc(d), y = py(d), k = 2 * LW * s * 0.94 / GATE[2].width;
+    ctx.globalAlpha = clamp((VIEW - d) / 6, 0, 1);
+    for (var i = 0; i < 3; i++) {
+      var img = GATE[i], w = img.width * k, h = img.height * k, x = pxl(i - 1, d), top = y - (i === 1 ? 150 : 100) * s - h;
+      ctx.fillStyle = '#4a3a6a'; ctx.fillRect(Math.round(x - s), Math.round(top + h), Math.max(1, Math.round(2 * s)), Math.round((i === 1 ? 62 : 12) * s));
+      ctx.drawImage(img, Math.round(x - w / 2), Math.round(top), Math.round(w), Math.round(h));
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawBoard(j) {
+    var z = 16 + j * 28, d = z - run.dist;
+    if (d < -3 || d > 70 || z > run.length - 20) return;
+    var side = j % 2 ? 1 : -1, sign = SIGNS[TH.signs[Math.floor(hash(j + 50) * TH.signs.length)]];
+    var s = sc(d), x = pxl(side * 2.45, d), y = py(d);
+    var k = 2.25 * s, w = sign.width * k, h = sign.height * k, top = y - 262 * s;
+    ctx.globalAlpha = clamp((70 - d) / 10, 0, 1) * clamp(1 + d / 3, 0, 1);
+    ctx.fillStyle = '#4a3a6a'; ctx.fillRect(Math.round(x - 2 * s), Math.round(top), Math.max(1, Math.round(4 * s)), Math.round(262 * s));
+    ctx.drawImage(sign, Math.round(x - w / 2), Math.round(top - h), Math.round(w), Math.round(h));
+    var f = SPR.fairy, fk = 7 * s, bob = reduced ? 0 : Math.sin(clock * 5 + z) * 3 * s;
+    ctx.drawImage(f, Math.round(x - f.width * fk / 2), Math.round(top - h - f.height * fk + bob), Math.round(f.width * fk), Math.round(f.height * fk));
+    ctx.globalAlpha = 1;
+  }
+
+  function drawTargetMark() {
+    var t = run.target();
+    if (!t) return;
+    var b = entBox(t), x0 = Math.round(b.x - b.w / 2) - 2, y0 = Math.round(b.y - b.h) - 2, w = Math.round(b.w) + 4, h = Math.round(b.h) + 4;
+    var L = Math.max(3, Math.round(w / 4));
+    ctx.fillStyle = run.senderReady() && run.wellTimed(t) ? C.gold : C.go;   // gold: a throw now would bounce
+    [[x0, y0, 1, 1], [x0 + w, y0, -1, 1], [x0, y0 + h, 1, -1], [x0 + w, y0 + h, -1, -1]].forEach(function (c) {
+      ctx.fillRect(Math.min(c[0], c[0] + c[2] * L), c[1] - (c[3] < 0 ? 2 : 0), L, 2);
+      ctx.fillRect(c[0] - (c[2] < 0 ? 2 : 0), Math.min(c[1], c[1] + c[3] * L), 2, L);
+    });
+    chevron(b.x, y0 - 9, 5, 6, ctx.fillStyle);
+  }
+
+  function handX() { return W / 2 + (run.x - cam) * LW; }
+
+  function drawHands() {
+    var hx = handX(), bob = reduced || run.status !== 'running' ? 0 : Math.round(Math.sin(clock * 9) * 2);
+    var blinkOff = run.grace > 0 && !reduced && Math.floor(clock * 14) % 2 === 0;
+    var sleeve = run.slop >= 50 ? '#e8b730' : C.sleeve;
+    var kick = fx.useKick > 0 ? Math.round(fx.useKick * 40) : 0;
+    function hand(dx, lift, flip) {
+      var x = Math.round(hx + dx), y = H - 34 + lift;
+      ctx.fillStyle = C.ink; ctx.fillRect(x - 1, y + 9, 24, 44);
+      ctx.fillStyle = sleeve; ctx.fillRect(x, y + 10, 22, 44);
+      if (run.slop >= 50) { ctx.fillStyle = C.ink; for (var i = 0; i < 3; i++) ctx.fillRect(x, y + 16 + i * 8, 22, 2); }
+      if (run.slop >= 25) {
+        ctx.fillStyle = '#ff6b7a'; ctx.fillRect(x + (flip ? 4 : 13), y + 13, 5, 5);
+        ctx.fillStyle = '#7dff6b'; ctx.fillRect(x + (flip ? 14 : 3), y + 22, 5, 4);
+      }
+      ctx.fillStyle = C.ink; ctx.fillRect(x, y - 4, 22, 15);
+      ctx.fillStyle = blinkOff ? '#ffe4c8' : C.skin; ctx.fillRect(x + 1, y - 3, 20, 13);
+      ctx.fillStyle = '#d99a6a';
+      for (var f = 0; f < 3; f++) ctx.fillRect(x + 5 + f * 5, y - 3, 1, 6);
+    }
+    hand(-46, -bob, false);
+    hand(24, bob - kick, true);
+    if (run.item) {
+      var spr = SPR[run.item], k = 4;
+      ctx.drawImage(spr, Math.round(hx + 35 - spr.width * k / 2), H - 39 + bob - kick - spr.height * k, spr.width * k, spr.height * k);
+    }
+    if (run.slop >= 75) {
+      var fy = SPR.fairy, fb = reduced ? 0 : Math.round(Math.sin(clock * 6) * 1.5);
+      ctx.drawImage(fy, Math.round(hx - 50), H - 58 - bob + fb, fy.width * 2, fy.height * 2);
+    }
+    if (fx.fall) {
+      var fs = SPR[fx.fall.item];
+      ctx.globalAlpha = clamp(1 - fx.fall.age / 0.6, 0, 1);
+      ctx.drawImage(fs, Math.round(hx + 34 + fx.fall.age * 30), Math.round(H - 60 + fx.fall.age * fx.fall.age * 260), fs.width * 3, fs.height * 3);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawFx() {
+    for (var i = 0; i < fx.shots.length; i++) {
+      var sh = fx.shots[i];
+      if (sh.age < 0) continue;
+      var u = clamp(sh.age / 0.16, 0, 1), b = entBox(sh.target), spr = SPR[sh.item];
+      var x = sh.x0 + (b.x - sh.x0) * u, y = sh.y0 + (b.y - b.h * 0.5 - sh.y0) * u - Math.sin(u * Math.PI) * 26;
+      var k = 3 - 2 * u * (1 - b.s);
+      ctx.drawImage(spr, Math.round(x - spr.width * k / 2), Math.round(y - spr.height * k / 2), Math.round(spr.width * k), Math.round(spr.height * k));
+    }
+    for (var j = 0; j < fx.bits.length; j++) {
+      var p = fx.bits[j];
+      ctx.globalAlpha = clamp(1 - p.age / p.life, 0, 1);
+      ctx.fillStyle = p.col; ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+    if (fx.fairy > 0) {                        // the fairy who just launched a promotion
+      var f = SPR.fairy, a = clamp(fx.fairy / 0.4, 0, 1), fb = reduced ? 0 : Math.sin(clock * 9) * 3;
+      ctx.globalAlpha = a;
+      ctx.drawImage(f, Math.round(W / 2 - f.width * 2.5), Math.round(HOR * 0.5 + fb), f.width * 5, f.height * 5);
+      ctx.globalAlpha = 1;
+    }
+    if (fx.flash > 0) {
+      ctx.fillStyle = 'rgba(255,77,94,' + (0.7 * fx.flash).toFixed(3) + ')';
+      ctx.fillRect(0, 0, W, 5); ctx.fillRect(0, H - 5, W, 5); ctx.fillRect(0, 0, 5, H); ctx.fillRect(W - 5, 0, 5, H);
+    }
+  }
+
+  function draw() {
+    cam = run.x * CAMF;
+    VIEW = run.view();
+    TH = run.endless ? THEMES[ORDER[Math.min(4, Math.floor(run.t / S.ENDLESS.phaseSeconds))]] : (THEMES[run.level.id] || THEMES.food);
+    drawSky();
+    drawGround();
+    drawTells();
+    var i, w0 = Math.floor((run.dist - 5) / 10);
+    for (i = w0 + 13; i >= w0; i--) { drawWall(-1, i); drawWall(1, i); }
+    drawHouse();
+    var list = [], gate = null;
+    for (i = Math.max(0, Math.ceil((run.dist - 3 - 16) / 28)); 16 + i * 28 < run.dist + 70; i++) list.push({ d: 16 + i * 28 - run.dist, board: i });
+    for (i = 0; i < run.ents.length; i++) {
+      if ((run.ents[i].tc - run.t) * 5 > VIEW) break;
+      var d = run.depth(run.ents[i]);
+      if (d <= VIEW && d > -3.4) { list.push({ d: d, ent: run.ents[i] }); if (run.ents[i].pattern === 'cancelGate' && !gate) gate = run.ents[i]; }
+    }
+    list.sort(function (a, b) { return b.d - a.d; });
+    for (i = 0; i < list.length; i++) { if (list[i].ent) drawEnt(list[i].ent); else drawBoard(list[i].board); }
+    if (gate) drawGate(gate);
+    drawTargetMark();
+    drawFx();
+    drawHands();
+  }
+
+  /* ---------- effects ---------- */
+  function burst(x, y, cols, n) {
+    if (reduced) return;
+    for (var i = 0; i < n; i++) {
+      fx.bits.push({ x: x, y: y, vx: (Math.random() - 0.5) * 120, vy: -40 - Math.random() * 110, age: 0, life: 0.5 + Math.random() * 0.3, col: cols[i % cols.length], size: 2 });
+    }
+  }
+  function updateFx(dt) {
+    fx.flash = Math.max(0, fx.flash - dt * 3);
+    fx.useKick = Math.max(0, fx.useKick - dt * 5);
+    fx.fairy = Math.max(0, fx.fairy - dt);
+    if (fx.fall) { fx.fall.age += dt; if (fx.fall.age > 0.6) fx.fall = null; }
+    var i;
+    for (i = fx.shots.length - 1; i >= 0; i--) {
+      var sh = fx.shots[i]; sh.age += dt;
+      if (sh.age >= 0.16) {
+        var b = entBox(sh.target);
+        burst(b.x, b.y - b.h * 0.5, sh.cols, 12);
+        fx.shots.splice(i, 1);
+      }
+    }
+    for (i = fx.bits.length - 1; i >= 0; i--) {
+      var p = fx.bits[i]; p.age += dt; p.vy += 380 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.age >= p.life) fx.bits.splice(i, 1);
+    }
+  }
+
+  /* ---------- captions and HUD ---------- */
+  function caption(text, hold, cls) {
+    capEl.textContent = text;
+    capEl.className = 'show' + (cls ? ' ' + cls : '');
+    window.clearTimeout(captionTimer);
+    captionTimer = window.setTimeout(function () { capEl.classList.remove('show'); }, hold || 1400);
+  }
+  function teach() {
+    if (taught || !coach.on) return;
+    taught = true;
+    window.setTimeout(function () { if (run.item && run.status === 'running' && !coach.hold) caption('MIDDLE BUTTON USES IT', 2200); }, 1300);
+  }
+
+  var BIT_COLS = { cup: ['#8a4fd8', '#ffe24a', '#f4ecff'], tray: ['#f0a62a', '#c97a14', '#fff4dc'], bag: ['#e0a15a', '#d8342c', '#ffd84a'], phone: ['#5ff0ff', '#ff6fa8', '#ffffff'] };
+  function shoot(item, target, delay) {
+    fx.shots.push({ item: item, target: target, age: -(delay || 0), x0: handX() + 35, y0: H - 60, cols: BIT_COLS[item] });
+  }
+  function drain() {
+    while (run.events.length) {
+      var ev = run.events.shift();
+      if (ev.type === 'hit') {
+        fx.flash = 1; caption(ev.line); sfx.hit();
+        if (ev.replaced) fx.fall = { item: ev.replaced, age: 0 };
+        if (coach.on && !coach.seen.hit && ev.item) { coach.seen.hit = true; holdFor('hit'); }
+        teach();
+      } else if (ev.type === 'pickup') { caption(ev.line); sfx.pickup(); teach(); }
+      else if (ev.type === 'use') {
+        fx.useKick = 1; sfx.toss(); sfx.clear();
+        shoot(ev.item, ev.target, 0);
+        if (ev.second) shoot(ev.item, ev.second, 0.08);
+        if (ev.bounce) { shoot(ev.item, ev.bounce, 0.16); sfx.bounce(); }
+        var extra = (ev.second ? 1 : 0) + (ev.bounce ? 1 : 0);
+        if (run.level.id === 'food' && ev.target.type === 'robot' && ev.item === 'cup') caption('A FAIRY IN A HEADSET?!', 2200, 'good');
+        else if (ev.bounce) caption('RETURN TO SENDER' + (extra > 1 ? '  x3' : '  x2'), 1800, 'good');
+        else caption(ev.line + (extra ? '  x2' : ''), 1700);
+      } else if (ev.type === 'drop') { fx.fall = { item: ev.item, age: 0 }; caption('DROPPED IT', 900); }
+      else if (ev.type === 'promo') {
+        fx.fairy = 2.4; sfx.promo();
+        caption('PROMOTION: ' + ev.name, 2400, 'promo');
+        if (!save.seen.promo) { save.seen.promo = true; persist(); holdFor('promo'); }
+        else window.setTimeout(function (n) { return function () { if (run.status === 'running' && !coach.hold) caption('"' + CCO[(n - 1) % CCO.length] + '"', 1500, 'promo'); }; }(ev.n), 900);
+      } else if (ev.type === 'adblock') { sfx.block(); caption('AD BLOCKED: ' + ev.name, 2200, 'good'); }
+      else if (ev.type === 'declined') { sfx.clear(); caption('PROMOTION DECLINED  +' + CFG.PROMO_BONUS, 1700, 'good'); }
+      else if (ev.type === 'won' || ev.type === 'lost') finish();
+    }
+  }
+
+  var slopNum = $('slopNum'), slopBar = $('slopBar'), homeNum = $('homeNum'), homeKey = $('homeKey'), itemBtn = $('itemBtn'),
+      itemLabel = $('itemLabel'), itemTimer = $('itemTimer'), ribbon = $('ribbon'), streakEl = $('streak'), gadgetChip = $('gadgetChip');
+  var hudKey = '';
+  function gadgetText() {
+    var g = run.gadget;
+    if (!g) return '';
+    if (g === 'lunchbox') return run.itemFree ? 'LUNCHBOX: NO DRIP' : '';
+    if (g === 'sender') return run.senderReady() ? 'RETURN: THROW LATE' : 'RETURN: USED';
+    if (g === 'shredder') return 'SHREDDER ON';
+    return run.adReady() ? 'AD BLOCK READY' : 'AD BLOCK ' + Math.min(run.adCount, CFG.AD_BLOCK_NEED) + '/' + CFG.AD_BLOCK_NEED;
+  }
+  function hud() {
+    var slop = Math.min(100, Math.round(run.slop));
+    var dist = run.endless ? Math.floor(run.dist) : Math.max(0, Math.ceil(run.length - run.dist));
+    var tgt = run.target(), hold = run.hold(), live = run.status === 'running' || run.status === 'paused';
+    var state = !run.item ? 'empty' : !tgt ? 'wait' : run.senderReady() && run.wellTimed(tgt) ? 'ready gold' : 'ready';
+    var timerW = 0, timerCls = '';
+    if (hold && !run.itemFree) {
+      if (hold.safeLeft > 0) { timerW = hold.safeLeft / CFG.HOLD_SAFE * 100; timerCls = 'safe'; }
+      else { timerW = (1 - hold.drip) * 100; timerCls = 'drip'; }
+    } else if (hold) { timerW = 100; timerCls = 'safe'; }
+    var gt = live ? gadgetText() : '';
+    var key = [slop, dist, run.item, state, Math.round(timerW), timerCls, run.streak, gt, live, run.endless].join('|');
+    if (key === hudKey) return;
+    hudKey = key;
+    slopNum.textContent = slop + '%';
+    slopBar.style.width = slop + '%';
+    slopBar.className = slop >= 75 ? 'hot' : slop >= 50 ? 'warm' : '';
+    homeKey.textContent = run.endless ? 'DIST' : 'HOME';
+    homeNum.textContent = dist + 'm';
+    itemBtn.className = 'btn item ' + state;
+    itemBtn.setAttribute('aria-disabled', tgt ? 'false' : 'true');
+    itemLabel.textContent = run.item ? S.ITEMS[run.item].label : 'NO ITEM';
+    itemTimer.style.width = timerW + '%';
+    itemTimer.className = timerCls;
+    ribbon.classList.toggle('show', slop >= 90 && run.status === 'running');
+    streakEl.textContent = 'STREAK ' + run.streak;
+    streakEl.classList.toggle('show', live && run.streak >= 3);
+    gadgetChip.textContent = gt;
+    gadgetChip.className = 'chip' + (gt ? ' show' : '') + (run.adReady() || (run.gadget === 'sender' && tgt && run.senderReady() && run.wellTimed(tgt)) ? ' ready' : '');
+  }
+
+  /* ---------- screens ---------- */
+  var SCREENS = ['homeScreen', 'wallScreen', 'benchScreen', 'howScreen', 'storyScreen', 'pauseScreen', 'endScreen'];
+  function show(id) {
+    SCREENS.forEach(function (s) { $(s).hidden = s !== id; });
+    stage.classList.toggle('menu', !!id && id !== 'pauseScreen');
+    if (id) $(id).scrollTop = 0;
+  }
+  var STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 7h7l-5.5 4.6 2 7.4L12 16.8 5.5 21l2-7.4L2 9h7z"/></svg>';
+  function starRow(n) { var h = ''; for (var i = 0; i < 3; i++) h += STAR.replace('<svg ', '<svg ' + (i < n ? 'class="on" ' : '')); return h; }
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; }
+
+  function renderHome() {
+    var box = $('chapters'); box.textContent = '';
+    LEVELS.forEach(function (lv, i) {
+      var open = unlocked(i), best = save.best[lv.id];
+      var c = el('button', 'card' + (open ? '' : ' locked'));
+      c.type = 'button';
+      c.appendChild(el('span', 'n', String(i + 1)));
+      c.appendChild(el('span', '', '<span class="t">' + lv.chapter + '</span><span class="s">' + (open ? lv.name.toLowerCase().replace(/\b\w/g, function (m) { return m.toUpperCase(); }) : 'Finish ' + LEVELS[i - 1].chapter + ' first') + '</span>'));
+      c.appendChild(el('span', 'r', open ? '<span class="stars">' + starRow(starsOf(i)) + '</span>' + (best ? '<br>' + best : '') : 'LOCKED'));
+      if (open) c.addEventListener('click', function () { startLevel(i); });
+      box.appendChild(c);
+    });
+    var eo = endlessOpen(), e = el('button', 'card' + (eo ? '' : ' locked'));
+    e.type = 'button';
+    e.appendChild(el('span', 'n', '+'));
+    e.appendChild(el('span', '', '<span class="t">THE LONG WAY HOME</span><span class="s">' + (eo ? 'Endless. It only gets faster.' : 'Finish BANKING first') + '</span>'));
+    e.appendChild(el('span', 'r', eo ? (save.endless ? 'BEST<br>' + save.endless + 'm' : 'NEW') : 'LOCKED'));
+    if (eo) e.addEventListener('click', function () { startLevel(-1); });
+    box.appendChild(e);
+    $('scrapNum').textContent = save.scrap;
+    $('wallCount').textContent = evidenceCount() + '/' + LEVELS.length;
+    $('benchNow').textContent = save.gadget ? S.GADGETS[save.gadget].name : 'NO GADGET';
+    $('homeGoal').textContent = save.ended ? 'Plan cancelled. The town is still out there if you want more stars.' : 'Cancel the plan. Find out who enrolled you. Get home.';
+  }
+  function goHome() {
+    release();
+    if (run.status === 'running' || run.status === 'paused') run = new S.Run(LEVELS[Math.max(0, current)]);   // a quiet street behind the menu
+    hudKey = '';
+    renderHome(); show('homeScreen');
+  }
+
+  function renderWall() {
+    var board = $('board'); board.textContent = '';
+    var n = evidenceCount();
+    LEVELS.forEach(function (lv, i) {
+      var st = STORY[lv.id], got = starsOf(i) >= 1;
+      var note = el('div', 'note' + (got ? '' : ' missing'));
+      note.appendChild(el('div', 'pin'));
+      if (got) { note.appendChild(el('b', '', (i + 1) + '. ' + st.evidence)); note.appendChild(el('span', '', st.found)); note.appendChild(el('i', '', st.after)); }
+      else { note.appendChild(el('b', '', (i + 1) + '. ' + lv.chapter)); note.appendChild(el('span', '', 'Nothing pinned yet.')); }
+      board.appendChild(note);
+    });
+    var core = el('div', 'note core');
+    core.appendChild(el('div', 'pin'));
+    core.appendChild(el('b', '', 'WHO ENROLLED ME?'));
+    core.appendChild(el('span', '', n >= LEVELS.length ? 'The fairies. Everyone is enrolled. You are the first to leave.' : n ? n + ' of ' + LEVELS.length + ' connections made.' : 'No leads yet.'));
+    board.appendChild(core);
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    svg.id = 'string'; svg.appendChild(line); board.appendChild(svg);
+    window.requestAnimationFrame(function () {         // red string through every pinned note, ending at the question
+      var o = board.getBoundingClientRect(), pts = [], notes = board.querySelectorAll('.note');
+      for (var i = 0; i < notes.length; i++) {
+        if (notes[i].classList.contains('missing') || (notes[i].classList.contains('core') && !n)) continue;
+        var r = notes[i].querySelector('.pin').getBoundingClientRect();
+        pts.push((r.left + r.width / 2 - o.left).toFixed(1) + ',' + (r.top + r.height / 2 - o.top).toFixed(1));
+      }
+      line.setAttribute('points', pts.length > 1 ? pts.join(' ') : '');
+    });
+  }
+
+  function renderBench() {
+    var box = $('gadgets'); box.textContent = '';
+    Object.keys(S.GADGETS).forEach(function (id) {
+      var g = S.GADGETS[id], owned = !!save.owned[id], on = save.gadget === id, can = save.scrap >= g.cost;
+      var row = el('div', 'gadget' + (on ? ' on' : ''));
+      row.appendChild(el('b', '', g.name));
+      var b = el('button', 'btn quiet' + (on ? ' eq' : !owned && can ? ' can' : ''), owned ? (on ? 'EQUIPPED' : 'EQUIP') : (can ? 'BUILD ' + g.cost : 'NEED ' + g.cost));
+      b.type = 'button';
+      if (!owned && !can) b.disabled = true;
+      b.addEventListener('click', function () {
+        if (!owned) { if (save.scrap < g.cost) return; save.scrap -= g.cost; save.owned[id] = true; save.gadget = id; }
+        else save.gadget = on ? null : id;
+        persist(); renderBench();
+      });
+      row.appendChild(b);
+      row.appendChild(el('span', '', g.text));
+      box.appendChild(row);
+    });
+    $('scrapNum2').textContent = save.scrap;
+  }
+
+  var storyNext = null;
+  function story(title, sub, lines, go, next) {
+    $('storyTitle').textContent = title;
+    $('storySub').textContent = sub || '';
+    var box = $('storyText'); box.textContent = '';
+    lines.forEach(function (l) { box.appendChild(el('p', '', l)); });
+    $('storyBtn').textContent = go || 'CONTINUE';
+    storyNext = next;
+    show('storyScreen');
+  }
+
+  function verdict() {
+    var st = run.stats;
+    if (run.status === 'lost') return ['Actually, I should compare air fryers.', 'You joined a queue. Nobody knows what it is for.', 'You are now a sponsored pedestrian.'][st.hits % 3];
+    if (st.ricochets) return 'Customer acquisition failed successfully. Twice with one throw.';
+    if (st.seconds > 0) return 'Made it home. Bought nothing. Somehow subscribed to a printer.';
+    if (st.hits === 0 && st.clears === 0) return 'Customer acquisition failed successfully.';
+    if (st.passes >= 6) return st.passes + ' offers declined. One nugget refinanced.';
+    return 'Not now, algorithm.';
+  }
+
+  var afterEnd = null;
+  function finish() {
+    var won = run.status === 'won', score = run.score(), st = run.stats, lv = run.level, id = lv.id;
+    var gain = run.scrap(), unlock = '', firstClear = false, newBest = false;
+    release();
+    afterEnd = null;
+    if (run.endless) {
+      var m = Math.floor(run.dist);
+      if (m > save.endless) { save.endless = m; newBest = true; }
+    } else {
+      var had = save.stars[id] || 0, got = run.stars();
+      if (got > had) { gain += (got - had) * CFG.SCRAP.STAR; save.stars[id] = got; }
+      firstClear = won && had === 0;
+      if (score > (save.best[id] || 0)) { save.best[id] = score; newBest = true; }
+      if (firstClear) {
+        if (current < LEVELS.length - 1) unlock = 'UNLOCKED: ' + LEVELS[current + 1].chapter + (current === 1 ? ' + ENDLESS' : '');
+        else { unlock = 'THE WALL IS COMPLETE'; afterEnd = 'ending'; }
+      }
+    }
+    save.scrap += gain;
+    if (coach.on && (won || (coach.seen.dodge && coach.seen.pickup && coach.seen.throwIt))) { coach.on = false; save.coach = false; coachBtn.textContent = 'TUTORIAL: OFF'; }
+    persist();
+    if (won) sfx.win(); else sfx.lose();
+
+    $('endTitle').textContent = won ? (id === 'hall' ? 'CUSTOMER LOST' : 'HOME.') : run.endless ? 'THEY GOT YOU' : 'LOYAL CUSTOMER';
+    $('endTitle').className = won ? 'title win' : 'title lose';
+    $('endStars').innerHTML = run.endless ? '' : starRow(run.stars());
+    $('endStars').hidden = run.endless;
+    $('endLine').textContent = won && id === 'hall' ? 'REASON: WENT HOME.' : verdict();
+    var found = firstClear && STORY[id];
+    $('endFound').hidden = !found;
+    if (found) { $('endFoundName').textContent = 'PINNED TO THE WALL: ' + STORY[id].evidence; $('endFoundText').textContent = STORY[id].found; }
+    $('endScrap').textContent = '+' + gain + ' SCRAP';
+    $('endUnlock').hidden = !unlock; $('endUnlock').textContent = unlock;
+    $('endScore').textContent = score;
+    $('endBest').textContent = run.endless ? save.endless + 'm' + (newBest ? ' NEW' : '') : (save.best[id] || 0) + (newBest ? ' NEW' : '');
+    var showDist = run.endless || !won;                    // a win always reaches the door
+    $('endDistKey').hidden = !showDist; $('endDist').hidden = !showDist;
+    $('endDistKey').textContent = run.endless ? 'Distance' : 'Reached';
+    $('endDist').textContent = Math.floor(run.dist) + 'm' + (run.endless ? '' : ' of ' + Math.round(run.length) + 'm');
+    $('endHits').textContent = st.hits;
+    $('endStreak').textContent = st.maxStreak;
+    var nb = $('nextBtn');
+    nb.hidden = !(won && !run.endless && (afterEnd || current < LEVELS.length - 1));
+    nb.textContent = afterEnd ? 'THE ENDING' : 'NEXT CHAPTER';
+    window.clearTimeout(captionTimer); capEl.classList.remove('show');
+    show('endScreen');
+  }
+
+  /* ---------- flow ---------- */
+  function begin(i) {
+    current = i;
+    var lv = i < 0 ? S.ENDLESS : LEVELS[i];
+    run = new S.Run(lv, { gadget: save.gadget, seed: i < 0 ? 1 + Math.floor(Math.random() * 1e6) : undefined });
+    fx = { flash: 0, shots: [], bits: [], fall: null, useKick: 0, fairy: 0 };
+    acc = 0; hudKey = ''; last = 0;
+    release();
+    show(null);
+    run.start();
+    caption(lv.chapter + ': ' + lv.name, 1900);
+  }
+  function startLevel(i) {
+    var lv = i < 0 ? S.ENDLESS : LEVELS[i];
+    if (i >= 0 && !save.briefed[lv.id]) {
+      story('CHAPTER ' + (i + 1) + ': ' + lv.chapter, '"' + lv.told + '"', STORY[lv.id].brief, 'RUN', function () { save.briefed[lv.id] = true; persist(); begin(i); });
+    } else begin(i);
+  }
+  function pause() { if (run.status === 'running') { run.pause(); show('pauseScreen'); } }
+  function resume() { if (run.status === 'paused') { run.resume(); show(null); last = 0; } }
+
+  function act(name) {
+    if (coach.hold && run.status === 'running' && name !== 'pause') {
+      var kind = coach.hold;
+      if (kind === 'dodge') { if (name === 'left' ? run.move(-1) : name === 'right' ? run.move(1) : false) release(); return; }
+      if (kind === 'throwIt' && name === 'item') { run.use(); release(); return; }
+      if (name === 'left') run.move(-1); else if (name === 'right') run.move(1);
+      release();
+      return;
+    }
+    if (name === 'left') run.move(-1);
+    else if (name === 'right') run.move(1);
+    else if (name === 'item') run.use();
+    else if (name === 'pause') { if (run.status === 'paused') resume(); else pause(); }
+  }
+
+  /* In-run controls fire on touch-down for speed. Menu buttons use click so the menus can scroll. */
+  function press(el, name) {
+    el.addEventListener('pointerdown', function (ev) { ev.preventDefault(); act(name); });
+    el.addEventListener('click', function (ev) { if (ev.detail === 0) act(name); });   // keyboard activation only
+  }
+  function tap(id, fn) { $(id).addEventListener('click', fn); }
+  press($('leftBtn'), 'left'); press($('rightBtn'), 'right'); press(itemBtn, 'item'); press($('pauseBtn'), 'pause');
+  tap('resumeBtn', resume);
+  tap('restartBtn', function () { begin(current); });
+  tap('quitBtn', goHome);
+  tap('againBtn', function () { begin(current); });
+  tap('homeBtn', goHome);
+  tap('nextBtn', function () {
+    if (afterEnd === 'ending') {
+      var e = STORY.ending;
+      story(e.title, e.sub, e.lines, e.go, function () { save.ended = true; persist(); goHome(); });
+    } else startLevel(current + 1);
+  });
+  tap('storyBtn', function () { var n = storyNext; storyNext = null; if (n) n(); });
+  tap('wallBtn', function () { show('wallScreen'); renderWall(); });
+  tap('benchBtn', function () { renderBench(); show('benchScreen'); });
+  tap('howBtn', function () { show('howScreen'); });
+  Array.prototype.forEach.call(document.querySelectorAll('.back'), function (b) { b.addEventListener('click', goHome); });
+  tap('coachBtn', function () { setCoach(!coach.on); });
+  coachBtn.textContent = 'TUTORIAL: ' + (coach.on ? 'ON' : 'OFF');
+  muteBtn.addEventListener('click', function () { music.toggle(); muteBtn.classList.toggle('off', music.muted); });
+  muteBtn.classList.toggle('off', music.muted);
+
+  var swipe = null;
+  stage.addEventListener('pointerdown', function (ev) {
+    if (run.status !== 'running' || ev.target === muteBtn) return;
+    if (coach.hold && coach.hold !== 'dodge' && coach.hold !== 'throwIt') { release(); return; }
+    swipe = { x: ev.clientX, y: ev.clientY, id: ev.pointerId };
+  });
+  stage.addEventListener('pointermove', function (ev) {
+    if (!swipe || ev.pointerId !== swipe.id) return;
+    var dx = ev.clientX - swipe.x;
+    if (Math.abs(dx) > 26 && Math.abs(dx) > Math.abs(ev.clientY - swipe.y)) { act(dx < 0 ? 'left' : 'right'); swipe.x = ev.clientX; swipe.y = ev.clientY; }
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) { stage.addEventListener(n, function () { swipe = null; }); });
+
+  window.addEventListener('keydown', function (ev) {
+    var k = ev.key, onButton = ev.target && ev.target.tagName === 'BUTTON';
+    if (k === 'ArrowLeft' || k === 'a' || k === 'A') act('left');
+    else if (k === 'ArrowRight' || k === 'd' || k === 'D') act('right');
+    else if (k === ' ') { if (onButton) return; if (run.status === 'running') act('item'); else if (run.status === 'paused') resume(); }
+    else if (k === 'p' || k === 'P' || k === 'Escape') { if (run.status === 'running' || run.status === 'paused') act('pause'); }
+    else return;
+    ev.preventDefault();
+  });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) pause(); });
+  window.addEventListener('resize', layout);
+
+  function frame(ts) {
+    var dt = last ? Math.min(0.1, (ts - last) / 1000) : 0;
+    last = ts;
+    if (run.status === 'running') {
+      clock += dt;
+      if (!coach.hold) acc += dt;
+      var n = 0;
+      while (acc >= CFG.DT && n < 8 && !coach.hold && run.status === 'running') {
+        coachCheck(); if (coach.hold) break;
+        run.step(CFG.DT); acc -= CFG.DT; n++;
+        drain();
+      }
+      if (n === 8) acc = 0;
+      updateFx(dt);
+    } else if (run.status === 'ready') clock += dt;
+    drain();
+    draw();
+    hud();
+    music.tick();
+    window.requestAnimationFrame(frame);
+  }
+
+  (function icons() {
+    function ico(id, fn) { var c = $(id), g = c.getContext('2d'); g.imageSmoothingEnabled = false; fn(g); }
+    function brackets(g, col) {
+      g.fillStyle = col;
+      [[2, 2, 1, 1], [38, 2, -1, 1], [2, 38, 1, -1], [38, 38, -1, -1]].forEach(function (c) { g.fillRect(Math.min(c[0], c[0] + c[2] * 9), c[1] - (c[3] < 0 ? 2 : 0), 9, 2); g.fillRect(c[0] - (c[2] < 0 ? 2 : 0), Math.min(c[1], c[1] + c[3] * 9), 2, 9); });
+    }
+    ico('icoDodge', function (g) { g.fillStyle = 'rgba(255,77,94,0.45)'; g.fillRect(2, 34, 36, 5); g.drawImage(SPR.mascot, 4, 0, 32, 40); });
+    ico('icoGrab', function (g) { g.fillStyle = 'rgba(125,255,107,0.5)'; g.fillRect(2, 34, 36, 5); g.drawImage(SPR.cup, 10, 10, 20, 30); g.fillStyle = C.go; g.beginPath(); g.moveTo(14, 1); g.lineTo(26, 1); g.lineTo(20, 8); g.closePath(); g.fill(); });
+    ico('icoThrow', function (g) { g.drawImage(SPR.rep, 8, 5, 24, 30); brackets(g, C.go); });
+    ico('icoRobot', function (g) { g.fillStyle = 'rgba(255,216,74,0.7)'; g.fillRect(22, 34, 17, 5); g.drawImage(SPR.robot, 0, 6, 24, 30); g.fillStyle = C.gold; g.beginPath(); g.moveTo(26, 12); g.lineTo(26, 26); g.lineTo(37, 19); g.closePath(); g.fill(); });
+    ico('icoSelfie', function (g) { g.fillStyle = 'rgba(255,77,94,0.45)'; g.fillRect(1, 34, 38, 5); g.drawImage(SPR.influencer, 0, 4, 24, 30); g.fillStyle = '#3a2a4a'; g.fillRect(18, 16, 16, 2); g.drawImage(SPR.phone, 30, 6, 8, 13); });
+    ico('icoBoxes', function (g) { g.fillStyle = 'rgba(255,77,94,0.45)'; g.fillRect(2, 34, 36, 5); g.drawImage(SPR.boxes, 4, 2, 32, 36); });
+  })();
+
+  layout();
+  if (save.intro) goHome();
+  else story(STORY.intro.title, '', STORY.intro.lines, STORY.intro.go, function () { save.intro = true; persist(); goHome(); });
+  window.requestAnimationFrame(frame);
+
+  /* Test hook: drive the game without waiting for real time. */
+  window.__game = {
+    run: function () { return run; },
+    begin: begin, startLevel: startLevel, goHome: goHome, act: act, layout: layout, music: music, coach: coach, setCoach: setCoach, save: save, persist: persist,
+    advance: function (sec) {
+      var n = Math.round(sec / CFG.DT);
+      for (var i = 0; i < n && !coach.hold && run.status === 'running'; i++) { coachCheck(); if (coach.hold) break; run.step(CFG.DT); drain(); }
+      clock += sec; updateFx(sec); draw(); hud();
+    }
+  };
+})();
+
+</script>
+</body>
+</html>

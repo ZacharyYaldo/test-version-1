@@ -2,4 +2,6 @@
 
 Play: https://zacharyyaldo.github.io/test-version-1/
 
-This repo holds only the built game (one HTML file). The source lives elsewhere.
+Slop Run: https://zacharyyaldo.github.io/test-version-1/slop-run/
+
+This repo holds only the built games (one HTML file each, plus music). The source lives elsewhere.
